@@ -1,0 +1,17 @@
+# raw and sensitive data
+data/raw/
+data/interim/
+*.csv
+
+# environment and credentials
+.env
+venv/
+__pycache__/
+*.pyc
+
+# system files
+.DS_Store
+Thumbs.db
+
+# notebook checkpoints
+.ipynb_checkpoints/
