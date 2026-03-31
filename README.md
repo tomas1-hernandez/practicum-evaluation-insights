@@ -2,7 +2,7 @@
 
 This project is a leadership-facing analytics pipeline for social work field education. It uses end-of-practicum student evaluations to build agency-level profiles, flag agencies that may need a closer look, summarize common strengths and frustrations in student feedback, and track trends over time.
 
----
+
 
 ## Table of Contents
 
@@ -20,7 +20,7 @@ This project is a leadership-facing analytics pipeline for social work field edu
 12. [Limitations](#limitations)
 13. [Who This Is For](#who-this-is-for)
 
----
+
 
 ## Project Overview
 
@@ -30,7 +30,7 @@ In many programs, this data is reviewed one placement at a time and then stored 
 
 This system is meant to support leadership review, not replace professional judgment. The results are presented as overall trends to identify areas that may need further attention.
 
----
+
 
 ## The Problem
 
@@ -38,7 +38,7 @@ Practicum evaluations often contain useful and honest feedback about supervision
 
 By the time patterns become obvious through manual review, it is too late to help the student who has already completed the placement. This project asks whether evaluation data can be processed more systematically so leadership can spot recurring strengths and concern patterns earlier and use that information to support better future placements.
 
----
+
 
 ## Methods
 
@@ -49,14 +49,14 @@ By the time patterns become obvious through manual review, it is too late to hel
 *   **Dictionary-based theme tagging:** A custom theme dictionary is used to tag common practicum themes in the text. The six main themes are Strong Supervision, Direct Practice Opportunity, Administrative Overload, Organizational Structure, Learning Environment, and Social Justice Alignment.
 *   **Yearly trend analysis:** Agency-level results are also summarized by academic year so leadership can review changes in fit score, recommendation rate, sentiment, and concern flags over time.
 
----
+
 
 ## Concern Flag Logic
 
 An agency is marked as **Review Recommended** when it triggers 2 or more of the following indicators simultaneously. This approach helps leadership focus on high-risk placements that need intervention.
 
 | Indicator                   | Threshold |
-| :-------------------------- | :-------- |
+| :-- | :-- |
 | Composite Fit Score         | < 3.5     |
 | Overall Sentiment Score     | < 0.10    |
 | Administrative Overload     | >= 40%    |
@@ -65,7 +65,7 @@ An agency is marked as **Review Recommended** when it triggers 2 or more of the 
 
 In the current dataset, 66 of 217 agencies included in the text-based profile outputs met this threshold.
 
----
+
 
 ## Data & Privacy
 
@@ -74,7 +74,7 @@ In the current dataset, 66 of 217 agencies included in the text-based profile ou
 * **Academic Years:** 2014-2015 through 2025-2026
 * **Privacy and FERPA:** To protect student identity and support FERPA compliance, personally identifiable information is redacted. The raw data file is not included in this repository.
 
----
+
 
 ## Source Files and Logic
 
@@ -103,7 +103,7 @@ A successful run creates the main output files in the `outputs/` folder.
 
 * **`outputs/figures/`** - includes the 10 PNG figures used in reporting and presentations, including score summaries, concern flag views, word clouds, and yearly trend charts
 
----
+
 
 ## Setup and Installation
 
@@ -135,7 +135,7 @@ cd practicum-evaluation-intelligence
 pip install -r requirements.txt
 ```
 
----
+
 
 ## Running the Pipeline
 
@@ -164,7 +164,7 @@ step 3: 66 agencies met the current review threshold
 summary: 2258 evaluations, 222 agencies, 217 agencies with text-based profile outputs
 ```
 
----
+
 
 ## Streamlit Dashboard
 
@@ -176,7 +176,7 @@ streamlit run src/app.py
 
 Run the pipeline at least once before launching the dashboard so the files in `outputs/` are available.
 
----
+
 
 ## Ethical Considerations
 
@@ -190,7 +190,7 @@ Key commitments include:
 * The system is meant to be used alongside professional judgment and direct agency relationships, not instead of them
 * Data access should remain limited to authorized Field Education personnel
 
----
+
 
 ## Limitations
 
@@ -199,7 +199,7 @@ Key commitments include:
 * The dataset reflects one program's placement history and may not generalize to other institutions without revising the theme dictionary and review logic
 * Concern flags based on smaller response counts should be interpreted carefully
 
----
+
 
 ## Who This Is For
 
