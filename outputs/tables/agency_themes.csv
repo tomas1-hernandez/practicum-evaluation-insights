@@ -1,12 +1,12 @@
 agency_name,agency_name_display,response_count,administrative_overload_helpful_pct,administrative_overload_least_pct,direct_practice_opportunity_helpful_pct,direct_practice_opportunity_least_pct,learning_environment_helpful_pct,learning_environment_least_pct,organizational_structure_helpful_pct,organizational_structure_least_pct,social_justice_alignment_helpful_pct,social_justice_alignment_least_pct,strong_supervision_helpful_pct,strong_supervision_least_pct
 3 rivers mental health center,3 Rivers Mental Health Center,13,0.0,25.0,23.1,41.7,53.8,41.7,7.7,0.0,23.1,0.0,7.7,16.7
 307 therapy,307 Therapy,8,0.0,12.5,12.5,12.5,75.0,25.0,0.0,0.0,12.5,0.0,0.0,25.0
-988 suicide & crisis lifeline center,988 Suicide & Crisis Lifeline Center,4,0.0,0.0,25.0,0.0,50.0,0.0,25.0,33.3,25.0,0.0,0.0,0.0
+988 suicide & crisis lifeline center,988 Suicide & Crisis Lifeline Center,4,0.0,0.0,25.0,0.0,50.0,0.0,0.0,33.3,25.0,0.0,0.0,0.0
 988 tribal response,988 Tribal Response,5,20.0,60.0,0.0,40.0,60.0,20.0,0.0,0.0,20.0,0.0,20.0,0.0
 aaniiih nakoda college,Aaniiih Nakoda College,9,11.1,33.3,11.1,44.4,44.4,33.3,0.0,0.0,22.2,0.0,22.2,0.0
 abbie shelter,Abbie Shelter,13,7.7,30.8,23.1,30.8,53.8,30.8,23.1,23.1,15.4,0.0,23.1,15.4
 acenda integrated health,Acenda Integrated Health,4,0.0,25.0,0.0,0.0,50.0,25.0,50.0,0.0,25.0,0.0,25.0,25.0
-affordable housing trust fund,Affordable Housing Trust Fund,6,0.0,33.3,33.3,33.3,83.3,16.7,16.7,33.3,50.0,0.0,16.7,16.7
+affordable housing trust fund,Affordable Housing Trust Fund,6,0.0,33.3,33.3,33.3,83.3,16.7,0.0,33.3,50.0,0.0,16.7,16.7
 ag worker health and services,Ag Worker Health And Services,7,14.3,28.6,28.6,28.6,28.6,28.6,28.6,14.3,14.3,0.0,57.1,14.3
 alaska family services,Alaska Family Services,6,16.7,16.7,16.7,16.7,33.3,33.3,16.7,0.0,33.3,0.0,50.0,0.0
 all nations health center - behaviorial health,All Nations Health Center - Behaviorial Health,8,0.0,0.0,25.0,12.5,50.0,12.5,0.0,12.5,50.0,0.0,25.0,0.0
@@ -22,7 +22,7 @@ benefis health system,Benefis Health System,21,4.8,40.0,14.3,40.0,42.9,30.0,19.0
 big sky palliative & hospice,Big Sky Palliative & Hospice,29,10.3,34.8,27.6,17.4,37.9,8.7,17.2,21.7,13.8,0.0,24.1,8.7
 billings public schools,Billings Public Schools,7,0.0,66.7,0.0,16.7,71.4,33.3,28.6,33.3,14.3,0.0,28.6,16.7
 bitterroot cares,Bitterroot Cares,6,16.7,16.7,33.3,0.0,66.7,16.7,0.0,16.7,83.3,0.0,16.7,16.7
-blackfeet community college,Blackfeet Community College,13,0.0,41.7,23.1,25.0,61.5,25.0,15.4,16.7,23.1,0.0,7.7,8.3
+blackfeet community college,Blackfeet Community College,13,0.0,41.7,23.1,25.0,61.5,25.0,7.7,16.7,23.1,0.0,7.7,8.3
 blaine county school district,Blaine County School District,8,0.0,50.0,12.5,0.0,87.5,37.5,0.0,0.0,25.0,0.0,25.0,0.0
 blue mountain clinic family practice,Blue Mountain Clinic Family Practice,3,33.3,33.3,0.0,0.0,33.3,0.0,0.0,33.3,0.0,0.0,33.3,33.3
 boys and girls club,Boys And Girls Club,28,14.3,22.2,25.0,25.9,50.0,14.8,10.7,7.4,32.1,7.4,28.6,11.1
@@ -35,13 +35,13 @@ california youth services,California Youth Services,9,0.0,33.3,55.6,11.1,44.4,11
 cameron r-1 school district,Cameron R-1 School District,19,0.0,20.0,15.8,20.0,47.4,13.3,5.3,6.7,42.1,0.0,15.8,20.0
 casa for children,Casa For Children,20,15.0,33.3,15.0,5.6,45.0,27.8,5.0,22.2,35.0,0.0,20.0,5.6
 cascade academy,Cascade Academy,7,0.0,0.0,0.0,16.7,28.6,33.3,28.6,33.3,14.3,0.0,28.6,0.0
-catalyst mt,Catalyst Mt,8,0.0,37.5,37.5,37.5,25.0,37.5,25.0,37.5,25.0,12.5,25.0,12.5
+catalyst mt,Catalyst Mt,8,0.0,37.5,37.5,37.5,25.0,37.5,12.5,37.5,25.0,12.5,25.0,12.5
 catholic charities,Catholic Charities,4,25.0,50.0,0.0,25.0,75.0,25.0,0.0,0.0,25.0,0.0,50.0,0.0
-cedar creek integrated health,Cedar Creek Integrated Health,16,0.0,0.0,50.0,6.2,56.2,25.0,12.5,18.8,50.0,0.0,31.2,6.2
+cedar creek integrated health,Cedar Creek Integrated Health,16,0.0,0.0,50.0,6.2,56.2,25.0,6.2,18.8,50.0,0.0,31.2,6.2
 "center for children, families and workforce development","Center For Children, Families And Workforce Development",44,4.5,10.8,18.2,8.1,34.1,16.2,9.1,10.8,50.0,0.0,38.6,16.2
 center for restorative youth justice,Center For Restorative Youth Justice,19,15.8,15.8,31.6,31.6,47.4,15.8,10.5,15.8,26.3,5.3,15.8,5.3
 cheyenne regional behavioral health,Cheyenne Regional Behavioral Health,6,16.7,20.0,16.7,20.0,83.3,0.0,16.7,40.0,16.7,0.0,33.3,0.0
-child and family service department,Child And Family Service Department,79,8.9,21.8,27.8,24.4,43.0,16.7,17.7,24.4,21.5,2.6,17.7,12.8
+child and family service department,Child And Family Service Department,79,8.9,21.8,27.8,24.4,43.0,16.7,16.5,24.4,21.5,2.6,17.7,12.8
 chippewa cree tribe human services division,Chippewa Cree Tribe Human Services Division,4,0.0,50.0,50.0,25.0,50.0,50.0,0.0,25.0,0.0,0.0,0.0,25.0
 city of olympia,City Of Olympia,6,16.7,0.0,50.0,20.0,50.0,20.0,16.7,40.0,16.7,0.0,33.3,60.0
 clark fork valley hospital & family medicine network,Clark Fork Valley Hospital & Family Medicine Network,9,11.1,25.0,22.2,0.0,44.4,12.5,0.0,12.5,44.4,0.0,11.1,0.0
@@ -56,9 +56,9 @@ core health,Core Health,6,0.0,66.7,50.0,33.3,33.3,33.3,0.0,16.7,16.7,0.0,33.3,0.
 crime victim advocate program,Crime Victim Advocate Program,19,10.5,16.7,26.3,22.2,47.4,5.6,10.5,22.2,26.3,5.6,36.8,16.7
 crisis connections,Crisis Connections,9,0.0,44.4,11.1,22.2,44.4,22.2,11.1,22.2,33.3,0.0,55.6,11.1
 crisis text line,Crisis Text Line,22,9.1,9.5,22.7,28.6,36.4,19.0,18.2,9.5,22.7,4.8,22.7,28.6
-crosswinds recovery,Crosswinds Recovery,35,5.7,32.3,28.6,16.1,45.7,19.4,20.0,22.6,34.3,0.0,8.6,3.2
+crosswinds recovery,Crosswinds Recovery,35,5.7,32.3,28.6,16.1,45.7,19.4,20.0,19.4,34.3,0.0,8.6,3.2
 curry health center,Curry Health Center,124,7.3,16.5,29.8,20.9,57.3,13.9,10.5,18.3,28.2,3.5,33.9,18.3
-david j. thatcher va clinic,David J. Thatcher Va Clinic,10,10.0,10.0,30.0,10.0,50.0,30.0,20.0,30.0,40.0,0.0,10.0,0.0
+david j. thatcher va clinic,David J. Thatcher Va Clinic,10,10.0,10.0,30.0,10.0,50.0,30.0,10.0,30.0,40.0,0.0,10.0,0.0
 davidson college,Davidson College,5,0.0,20.0,20.0,0.0,0.0,0.0,20.0,0.0,60.0,0.0,40.0,20.0
 denver human services,Denver Human Services,3,0.0,0.0,66.7,50.0,33.3,50.0,0.0,0.0,0.0,0.0,33.3,50.0
 denver public schools,Denver Public Schools,3,0.0,0.0,0.0,0.0,0.0,0.0,33.3,0.0,33.3,0.0,33.3,0.0
@@ -73,7 +73,7 @@ empowermt,Empowermt,33,9.1,25.0,15.2,25.0,30.3,14.3,12.1,10.7,42.4,7.1,21.2,10.7
 encompass community service,Encompass Community Service,10,10.0,25.0,30.0,12.5,70.0,37.5,10.0,12.5,10.0,12.5,10.0,0.0
 fair-mont-egan school,Fair-Mont-Egan School,7,0.0,14.3,42.9,28.6,28.6,28.6,14.3,14.3,0.0,0.0,0.0,0.0
 fairfax behavioral health,Fairfax Behavioral Health,3,0.0,0.0,33.3,50.0,33.3,0.0,0.0,0.0,33.3,0.0,33.3,0.0
-families first learning lab,Families First Learning Lab,21,9.5,33.3,42.9,33.3,61.9,38.9,23.8,16.7,23.8,5.6,47.6,11.1
+families first learning lab,Families First Learning Lab,21,9.5,33.3,42.9,33.3,61.9,38.9,19.0,16.7,23.8,5.6,47.6,11.1
 first step resource center,First Step Resource Center,14,0.0,7.1,35.7,7.1,57.1,7.1,7.1,21.4,28.6,14.3,57.1,7.1
 fort belknap social services,Fort Belknap Social Services,3,0.0,0.0,66.7,33.3,66.7,33.3,0.0,0.0,0.0,0.0,0.0,0.0
 franklin pierce school district,Franklin Pierce School District,4,0.0,25.0,25.0,25.0,75.0,75.0,25.0,25.0,25.0,0.0,0.0,25.0
@@ -81,7 +81,7 @@ friends forever mentoring,Friends Forever Mentoring,3,0.0,33.3,0.0,33.3,33.3,66.
 friends of the children montana,Friends Of The Children Montana,6,33.3,75.0,33.3,25.0,33.3,50.0,0.0,0.0,33.3,0.0,33.3,0.0
 frontier behavioral health,Frontier Behavioral Health,14,7.1,50.0,42.9,16.7,42.9,41.7,14.3,16.7,21.4,25.0,42.9,0.0
 gallatin high school,Gallatin High School,3,0.0,100.0,0.0,50.0,33.3,50.0,33.3,0.0,0.0,0.0,0.0,0.0
-gateway to success,Gateway To Success,5,20.0,0.0,40.0,20.0,20.0,20.0,40.0,20.0,40.0,0.0,40.0,20.0
+gateway to success,Gateway To Success,5,20.0,0.0,40.0,20.0,20.0,20.0,20.0,20.0,40.0,0.0,40.0,20.0
 germane and wise mental health consulting,Germane And Wise Mental Health Consulting,6,33.3,33.3,50.0,50.0,83.3,50.0,16.7,16.7,0.0,0.0,50.0,16.7
 grandview family counseling,Grandview Family Counseling,6,0.0,33.3,16.7,50.0,33.3,16.7,0.0,16.7,33.3,0.0,50.0,0.0
 great falls rescue mission cameron family center,Great Falls Rescue Mission Cameron Family Center,4,0.0,25.0,50.0,25.0,50.0,25.0,0.0,25.0,0.0,0.0,0.0,25.0
@@ -89,7 +89,7 @@ greater valley health center,Greater Valley Health Center,14,14.3,38.5,28.6,23.1
 green apple behavioral health,Green Apple Behavioral Health,3,0.0,66.7,0.0,33.3,33.3,33.3,33.3,33.3,0.0,0.0,33.3,33.3
 habitat for humanity of gallatin valley,Habitat For Humanity Of Gallatin Valley,5,0.0,0.0,40.0,25.0,20.0,25.0,40.0,50.0,40.0,0.0,40.0,50.0
 hamilton school district 3,Hamilton School District 3,5,0.0,50.0,60.0,50.0,60.0,50.0,0.0,0.0,40.0,0.0,40.0,0.0
-hamilton school district 4,Hamilton School District 4,3,0.0,33.3,0.0,0.0,33.3,33.3,33.3,66.7,33.3,0.0,33.3,33.3
+hamilton school district 4,Hamilton School District 4,3,0.0,33.3,0.0,0.0,33.3,33.3,33.3,33.3,33.3,0.0,33.3,33.3
 haven,Haven,8,0.0,0.0,25.0,14.3,62.5,0.0,12.5,28.6,50.0,14.3,12.5,14.3
 health promotion disease prevention,Health Promotion Disease Prevention,13,15.4,16.7,30.8,8.3,38.5,8.3,0.0,8.3,23.1,25.0,30.8,16.7
 helena indian alliance,Helena Indian Alliance,8,12.5,37.5,25.0,12.5,62.5,25.0,0.0,0.0,25.0,12.5,0.0,0.0
@@ -97,7 +97,7 @@ helena valley addiction services,Helena Valley Addiction Services,11,18.2,18.2,1
 hopa mountain,Hopa Mountain,8,12.5,0.0,12.5,0.0,50.0,0.0,0.0,0.0,12.5,14.3,25.0,0.0
 imperial county behavioral health,Imperial County Behavioral Health,3,33.3,0.0,33.3,0.0,66.7,0.0,0.0,33.3,33.3,0.0,0.0,33.3
 intermountain,Intermountain,9,0.0,25.0,33.3,37.5,77.8,62.5,0.0,12.5,33.3,0.0,22.2,25.0
-international rescue committee,International Rescue Committee,40,7.5,31.4,37.5,14.3,45.0,25.7,15.0,11.4,17.5,0.0,22.5,11.4
+international rescue committee,International Rescue Committee,40,7.5,31.4,37.5,14.3,45.0,25.7,12.5,11.4,17.5,0.0,22.5,11.4
 iris clubhouse,Iris Clubhouse,4,0.0,50.0,50.0,25.0,25.0,50.0,0.0,0.0,25.0,25.0,25.0,0.0
 juvenile probation,Juvenile Probation,5,0.0,20.0,0.0,40.0,40.0,20.0,20.0,0.0,20.0,20.0,0.0,0.0
 kayenta health center,Kayenta  Health Center,5,20.0,0.0,40.0,0.0,20.0,20.0,20.0,20.0,0.0,0.0,60.0,0.0
@@ -123,7 +123,7 @@ missoula food bank,Missoula Food Bank,14,0.0,28.6,21.4,7.1,21.4,14.3,7.1,21.4,35
 missoula interfaith collaborative,Missoula Interfaith Collaborative,45,8.9,20.9,40.0,23.3,35.6,18.6,13.3,23.3,26.7,2.3,33.3,14.0
 missoula municipal court,Missoula Municipal Court,9,0.0,0.0,33.3,16.7,55.6,16.7,11.1,33.3,44.4,0.0,22.2,16.7
 missoula parks and recreation,Missoula Parks And Recreation,9,11.1,37.5,11.1,37.5,44.4,25.0,0.0,12.5,22.2,0.0,33.3,0.0
-missoula police department,Missoula Police Department,18,5.6,31.2,38.9,31.2,27.8,43.8,16.7,25.0,27.8,0.0,33.3,6.2
+missoula police department,Missoula Police Department,18,5.6,31.2,38.9,31.2,27.8,43.8,11.1,25.0,27.8,0.0,33.3,6.2
 missoula public library,Missoula Public Library,8,0.0,14.3,12.5,14.3,75.0,14.3,0.0,14.3,37.5,0.0,0.0,0.0
 missoula senior citizens center,Missoula Senior Citizens Center,9,0.0,14.3,22.2,14.3,44.4,14.3,0.0,0.0,11.1,0.0,33.3,0.0
 montana 10,Montana 10,22,9.1,28.6,13.6,28.6,31.8,23.8,9.1,14.3,36.4,4.8,40.9,14.3
@@ -141,7 +141,7 @@ open aid alliance,Open Aid Alliance,22,4.5,25.0,31.8,30.0,22.7,10.0,13.6,15.0,9.
 oregon aids education & training center,Oregon Aids Education & Training Center,5,20.0,20.0,20.0,20.0,80.0,40.0,0.0,0.0,40.0,0.0,0.0,0.0
 parents helping parents,Parents Helping Parents,7,0.0,0.0,14.3,28.6,42.9,28.6,0.0,28.6,14.3,0.0,28.6,0.0
 paris gibson alternative education,Paris Gibson Alternative Education,4,0.0,50.0,50.0,50.0,25.0,0.0,0.0,0.0,50.0,0.0,25.0,0.0
-partners in home care,Partners In Home Care,24,4.2,36.4,16.7,9.1,62.5,13.6,4.2,13.6,29.2,9.1,8.3,13.6
+partners in home care,Partners In Home Care,24,4.2,36.4,16.7,9.1,62.5,13.6,0.0,13.6,29.2,9.1,8.3,13.6
 partnership health center,Partnership Health Center,29,10.3,15.4,13.8,7.7,31.0,11.5,20.7,19.2,34.5,0.0,34.5,15.4
 paxson elementary school,Paxson Elementary School,13,15.4,38.5,15.4,38.5,38.5,15.4,7.7,7.7,30.8,0.0,30.8,0.0
 peachtree pediatric therapy center,Peachtree Pediatric Therapy Center,4,0.0,75.0,0.0,50.0,75.0,25.0,0.0,0.0,25.0,0.0,25.0,0.0
@@ -171,7 +171,7 @@ slo recovery center,Slo Recovery Center,3,33.3,66.7,33.3,33.3,100.0,33.3,0.0,33.
 soft landing missoula,Soft Landing Missoula,8,12.5,16.7,37.5,16.7,37.5,16.7,12.5,50.0,25.0,0.0,37.5,0.0
 sound behavioral health,Sound Behavioral Health,3,0.0,33.3,66.7,0.0,33.3,0.0,0.0,33.3,33.3,0.0,0.0,0.0
 southern piegan health center,Southern Piegan Health Center,3,0.0,33.3,33.3,0.0,0.0,33.3,0.0,0.0,0.0,0.0,33.3,0.0
-southwest montana community health center,Southwest Montana Community Health Center,5,0.0,0.0,0.0,0.0,40.0,0.0,20.0,60.0,60.0,0.0,0.0,40.0
+southwest montana community health center,Southwest Montana Community Health Center,5,0.0,0.0,0.0,0.0,40.0,0.0,0.0,60.0,60.0,0.0,0.0,40.0
 spot to talk,Spot To Talk,9,0.0,0.0,33.3,0.0,44.4,0.0,0.0,33.3,44.4,0.0,55.6,22.2
 spotted bull recovery resource center,Spotted Bull Recovery Resource Center,7,0.0,0.0,14.3,16.7,14.3,16.7,14.3,33.3,28.6,0.0,42.9,0.0
 st. patrick hospital,St. Patrick Hospital,41,4.9,18.9,24.4,24.3,53.7,16.2,9.8,18.9,24.4,0.0,24.4,10.8
@@ -208,7 +208,7 @@ west county health services,West County Health Services,4,0.0,0.0,50.0,25.0,50.0
 western montana mental health center,Western Montana Mental Health Center,11,0.0,10.0,9.1,20.0,27.3,0.0,9.1,10.0,45.5,10.0,45.5,20.0
 western montana's lgbtq+ community center,Western Montana's Lgbtq+ Community Center,3,0.0,33.3,100.0,33.3,66.7,0.0,0.0,0.0,33.3,0.0,33.3,33.3
 winds of change mental health center,Winds Of Change Mental Health Center,17,23.5,41.2,23.5,23.5,52.9,23.5,5.9,5.9,29.4,0.0,11.8,23.5
-women's resource center,Women's Resource Center,9,11.1,22.2,44.4,11.1,44.4,33.3,44.4,22.2,0.0,0.0,33.3,11.1
+women's resource center,Women's Resource Center,9,11.1,22.2,44.4,11.1,44.4,33.3,33.3,22.2,0.0,0.0,33.3,11.1
 wyoming behavioral institute,Wyoming Behavioral Institute,3,0.0,33.3,0.0,0.0,0.0,33.3,33.3,0.0,33.3,0.0,33.3,0.0
 yellowstone boys and girls ranch,Yellowstone Boys And Girls Ranch,4,50.0,25.0,25.0,25.0,50.0,0.0,0.0,75.0,50.0,50.0,0.0,25.0
 youth court services,Youth Court Services,4,0.0,0.0,25.0,25.0,25.0,0.0,0.0,25.0,25.0,0.0,25.0,0.0

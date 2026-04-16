@@ -1,9 +1,7 @@
-pandas==2.3.3
-scikit-learn==1.8.0
-textblob==0.19.0
-matplotlib==3.10.8
-wordcloud==1.9.6
-plotly==6.6.0
-streamlit==1.55.0
-# Core packages required to run the pipeline, figures, and Streamlit app
-# If needed, run: python -m textblob.download_corpora
+nltk>=3.9
+matplotlib>=3.8
+pandas>=2.2
+plotly>=5.20
+scikit-learn>=1.5
+streamlit>=1.40
+wordcloud>=1.9

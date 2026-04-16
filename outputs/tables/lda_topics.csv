@@ -1,13 +1,13 @@
 text_column,topic_index,top_words
-most_helpful,1,instead | observing | included | instead observing | day | tasks | support | helpful | classroom | appreciated
-most_helpful,2,helpful | work | practice | feedback | gave | direct | afi | direct practice | connected | documentation
-most_helpful,3,learning | experience | supervision | practice | skills | direct | wanted | feedback | direct practice | did
-most_helpful,4,work | helpful | social | learned | learning | learn | practicum | working | clients | assessment
-most_helpful,5,day | helped | work | exposure | build | build confidence | confidence | help | support | day day
-most_helpful,6,practice | helped | got | work | connect | understand | helped understand | class | got work | content
 least_helpful,1,work | practice | admin | hands | admin work | hands practice | work hands | helpful | helpful admin | time
 least_helpful,2,practice | time | instead | paperwork | lot | went | frustration | actual | time went | lot time
 least_helpful,3,times | helpful | process | clearer | supervision | scheduling | felt | onboarding | difficult | onboarding process
 least_helpful,4,tasks | fewer | contact | client | client contact | needed | office | office tasks | contact fewer | needed client
 least_helpful,5,needed | shadowing | helpful | skills | chances | try | shadowing needed | needed chances | chances try | try skills
 least_helpful,6,practicum | work | helpful | educational | learning | experience | feel | agency | did | think
+most_helpful,1,instead | observing | included | instead observing | day | tasks | support | helpful | classroom | appreciated
+most_helpful,2,helpful | work | practice | feedback | gave | direct | afi | direct practice | connected | documentation
+most_helpful,3,learning | experience | supervision | practice | skills | direct | wanted | feedback | direct practice | did
+most_helpful,4,work | helpful | social | learned | learning | learn | practicum | working | clients | assessment
+most_helpful,5,day | helped | work | exposure | build | build confidence | confidence | help | support | day day
+most_helpful,6,practice | helped | got | work | connect | understand | helped understand | class | got work | content
