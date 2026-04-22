@@ -1,18 +1,6 @@
-"""Theme lexicon used for simple field education text tagging.
+"""Theme lexicon for simple field education text tagging."""
 
-This file is not the full social work dictionary and it is not trying to turn
-that document into code. It is a smaller project lexicon made for this
-pipeline. The social work dictionary helped give background context on field
-education language, but the actual code only uses the keyword lists defined
-here.
-
-That means this file is the working theme reference for the project. If you
-want to revise how themes are tagged later, this is the file to edit.
-"""
-
-from __future__ import annotations
-
-prompt_artifact_bigram_list = (
+prompt_artifact_bigrams = {
     "biggest help",
     "chances try",
     "day day",
@@ -32,9 +20,7 @@ prompt_artifact_bigram_list = (
     "part least",
     "try skills",
     "work enough",
-)
-
-prompt_artifact_bigrams = set(prompt_artifact_bigram_list)
+}
 
 theme_dictionary = {
     "administrative_overload": [
