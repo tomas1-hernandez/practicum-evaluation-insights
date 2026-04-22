@@ -1,475 +1,900 @@
-"""Build the static report figures for practicum evaluation intelligence.
+"""Build all static report figures for practicum evaluation intelligence.
 
-This script reads the pipeline outputs and saves the figures used in the
-written report, deck, and portfolio piece. It runs separately from the
-main pipeline so visuals can be refreshed without rebuilding every table.
-
-Run this directly after the pipeline finishes:
+Run after pipeline.py:
     python create_visualizations.py
-
-All figures are saved to outputs/figures/ as PNG files.
 """
 
 from __future__ import annotations
 
-import random
 import re
 from collections import Counter
 
 import matplotlib.patches as mpatches
 import matplotlib.patheffects as pe
 import matplotlib.pyplot as plt
+import numpy as np
 import pandas as pd
-from matplotlib.lines import Line2D
+import seaborn as sns
+from scipy.stats import gaussian_kde, ttest_ind
 from wordcloud import WordCloud
 
-from config import figure_dpi, figures_dir, input_file, profiles_dir, tables_dir
-from constants import fit_score_cols, likert_cols, likert_display, stopwords
-
-# ------------------------------------------------------------------------------
-# Color palette - one source of truth for the whole figure set
-# ------------------------------------------------------------------------------
-
-COLORS = {
-    "concern": "#c0392b",      # strong red for flagged / problematic
-    "caution": "#e67e22",      # orange for borderline
-    "neutral": "#7f8c8d",      # gray for gridlines and reference lines
-    "positive": "#2471a3",     # steel blue for good / no flag
-    "light_blue": "#aad2e4",   # lighter blue for volume bars
-    "background": "#ffffff",
-}
-
-# ------------------------------------------------------------------------------
-# Global matplotlib style - applied once, inherited by all figures
-# ------------------------------------------------------------------------------
-
-plt.rcParams.update(
-    {
-        "axes.spines.right": False,
-        "axes.spines.top": False,
-        "axes.titlesize": 11,
-        "axes.titleweight": "bold",
-        "figure.dpi": 100,
-        "figure.facecolor": COLORS["background"],
-        "font.family": "sans-serif",
-        "font.size": 10,
-        "grid.alpha": 0.2,
-        "grid.color": COLORS["neutral"],
-    }
+from config import (
+    agency_profiles_file,
+    agency_trends_file,
+    concern_fit_score,
+    concern_recommendation,
+    concern_sentiment,
+    evaluations_text_file,
+    figure_dpi,
+    figures_dir,
+    input_file,
+)
+from constants import (
+    likert_cols,
+    likert_display,
+    likert_map,
+    placement_metric_labels_long,
+    placement_quality_cols,
+    program_level_display_map,
+    stopwords,
 )
 
-# file paths - read from config so nothing is hardcoded here
-profiles_file = profiles_dir / "agency_profiles.csv"
-trends_file = tables_dir / "agency_yearly_trends.csv"
+sns.set_theme(style="ticks", font_scale=1.0)
+
+# palette
+WHITE = "#ffffff"
+BLUE = "#5F89A3"
+RED = "#B34F5B"
+AMBER = "#A65C28"
+TEAL = "#4A6F64"
+LIGHT_BLUE = "#77A8CA"
+MUTED_BLUE = "#B4CFE0"
+GRAY_REF = "#869299"
+GRAY_TEXT = "#4b555b"
+GRAY_SPINE = "#c7cfd4"
+BLUSH = "#f1e0e1"
+TITLE = "#1c1e21"
 
 
-# ------------------------------------------------------------------------------
-# Shared helpers
-# ------------------------------------------------------------------------------
+# -----------------------------------------------------------------------------
+# shared helpers
+# -----------------------------------------------------------------------------
+def _despine(ax):
+    sns.despine(ax=ax, top=True, right=True, left=False, bottom=False)
 
 
-def save_figure(fig: plt.Figure, filename: str) -> None:
-    """Save a figure with consistent export settings and close it after."""
+def _despine_left(ax):
+    sns.despine(ax=ax, top=True, right=True, left=True, bottom=False)
+
+
+def _spine_style(ax):
+    for sp, spine in ax.spines.items():
+        if sp in ("top", "right"):
+            spine.set_visible(False)
+        else:
+            spine.set_color(GRAY_SPINE)
+            spine.set_linewidth(0.8)
+
+
+def _base(ax, grid="y"):
+    _spine_style(ax)
+    ax.set_facecolor(WHITE)
+
+    if grid == "y":
+        ax.yaxis.grid(True, alpha=0.15, color=GRAY_SPINE)
+        ax.xaxis.grid(False)
+    elif grid == "x":
+        ax.xaxis.grid(True, alpha=0.15, color=GRAY_SPINE)
+        ax.yaxis.grid(False)
+    else:
+        ax.xaxis.grid(False)
+        ax.yaxis.grid(False)
+
+    ax.set_axisbelow(True)
+    ax.tick_params(colors=GRAY_TEXT, labelsize=8.5)
+
+
+def _title(fig, title, subtitle=None):
+    fig.text(
+        0.01,
+        0.99,
+        title,
+        ha="left",
+        va="top",
+        fontsize=12,
+        fontweight="bold",
+        color=TITLE,
+    )
+    if subtitle:
+        fig.text(
+            0.01,
+            0.948,
+            subtitle,
+            ha="left",
+            va="top",
+            fontsize=9,
+            color=GRAY_TEXT,
+        )
+
+
+def _save(fig, name):
     figures_dir.mkdir(parents=True, exist_ok=True)
     fig.savefig(
-        figures_dir / filename,
-        bbox_inches="tight",
+        figures_dir / name,
         dpi=figure_dpi,
+        bbox_inches="tight",
+        facecolor=WHITE,
         edgecolor="none",
-        facecolor=COLORS["background"],
     )
     plt.close(fig)
 
 
-def build_word_freq_dict(text_series: pd.Series, top_n: int = 150) -> dict[str, int]:
-    """Build a word frequency dictionary for word clouds from a text column."""
+def _add_recommendation_pct(df: pd.DataFrame) -> pd.DataFrame:
+    df = df.copy()
+    r = pd.to_numeric(df["recommendation_rate"], errors="coerce")
+    df["rec_pct"] = r * 100 if r.dropna().max() <= 1.0 else r
+    return df
+
+
+def _parse_bigrams(series, top_n=15):
+    artifacts = {
+        "biggest help",
+        "chances try",
+        "day day",
+        "day work",
+        "enough hands",
+        "hands practice",
+        "helpful educational",
+        "helpful least",
+        "helpful part",
+        "instead observing",
+        "issues site",
+        "least helpful",
+        "most helpful",
+        "needed chances",
+        "needed client",
+        "one frustration",
+        "part least",
+        "try skills",
+        "work enough",
+    }
+
+    counter: Counter = Counter()
+    for val in series.dropna():
+        for item in str(val).split(" | ")[:top_n]:
+            parts = item.rsplit(":", 1)
+            if len(parts) == 2:
+                counter[parts[0].strip()] += int(parts[1].strip())
+
+    return Counter({k: v for k, v in counter.items() if k not in artifacts})
+
+
+def _word_freq(series, extra_stop=None):
+    stop = stopwords | (extra_stop or set())
     tokens: list[str] = []
-    for text in text_series.dropna():
+
+    for text in series.dropna():
         words = re.findall(r"\b[a-z]+\b", str(text).lower())
-        tokens.extend(
-            [word for word in words if word not in stopwords and len(word) > 2]
+        tokens.extend(w for w in words if w not in stop and len(w) > 2)
+
+    return dict(Counter(tokens).most_common(90))
+
+
+def _histogram(
+    data,
+    title,
+    subtitle,
+    xlabel,
+    thresh_val,
+    thresh_label,
+    filename,
+    x_lo=None,
+    x_hi=None,
+):
+    fig, ax = plt.subplots(figsize=(9.5, 4.8))
+    fig.patch.set_facecolor(WHITE)
+    _base(ax, grid="y")
+
+    ax.hist(
+        data.dropna(),
+        bins=22,
+        color=LIGHT_BLUE,
+        alpha=0.80,
+        edgecolor=WHITE,
+        linewidth=0.4,
+    )
+
+    ax.axvline(thresh_val, color=RED, linewidth=1.6, linestyle="--")
+    ax.text(
+        thresh_val + (data.max() - data.min()) * 0.01,
+        ax.get_ylim()[1] * 0.90,
+        thresh_label,
+        color=RED,
+        fontsize=8,
+        va="top",
+    )
+
+    mean_val = data.mean()
+    ax.axvline(mean_val, color=GRAY_REF, linewidth=1.0, linestyle=":")
+    ax.text(
+        mean_val + (data.max() - data.min()) * 0.01,
+        ax.get_ylim()[1] * 0.70,
+        f"Mean  {mean_val:.2f}",
+        color=GRAY_TEXT,
+        fontsize=8,
+        va="top",
+    )
+
+    ax.set_xlabel(xlabel, fontsize=9, color=GRAY_TEXT, labelpad=6)
+    ax.set_ylabel(
+        "Number of agencies", fontsize=9, color=GRAY_TEXT, labelpad=6
+    )
+    ax.tick_params(colors=GRAY_TEXT, labelsize=8.5)
+
+    if x_lo is not None:
+        ax.set_xlim(x_lo, x_hi)
+
+    _title(fig, title, subtitle)
+    fig.subplots_adjust(top=0.87, bottom=0.13, left=0.08, right=0.97)
+    _despine(ax)
+    _save(fig, filename)
+
+
+# -----------------------------------------------------------------------------
+# figure 1 - concern flag summary
+# -----------------------------------------------------------------------------
+def fig_01_concern_flag_summary(sufficient: pd.DataFrame) -> None:
+    total = len(sufficient)
+    flagged = int(
+        (sufficient["concern_flag"].str.lower() == "review recommended").sum()
+    )
+    not_flagged = total - flagged
+    pct_flagged = round(flagged / total * 100, 1)
+    pct_ok = round(100 - pct_flagged, 1)
+
+    fig, ax = plt.subplots(figsize=(11, 2.8))
+    fig.patch.set_facecolor(WHITE)
+    ax.set_facecolor(WHITE)
+
+    for spine in ax.spines.values():
+        spine.set_visible(False)
+
+    ax.xaxis.grid(False)
+    ax.yaxis.grid(False)
+    ax.set_yticks([])
+
+    bar_h = 0.62
+
+    ax.barh([""], [pct_ok], color=MUTED_BLUE, height=bar_h, left=0)
+    ax.barh([""], [pct_flagged], color=RED, height=bar_h, left=pct_ok)
+
+    ax.text(
+        pct_ok / 2,
+        0,
+        f"{not_flagged} agencies\n{pct_ok:.1f}%",
+        ha="center",
+        va="center",
+        fontsize=12,
+        fontweight="bold",
+        color=GRAY_TEXT,
+        linespacing=1.4,
+    )
+
+    ax.text(
+        pct_ok + pct_flagged / 2,
+        0,
+        f"{flagged} agencies\n{pct_flagged:.1f}%",
+        ha="center",
+        va="center",
+        fontsize=12,
+        fontweight="bold",
+        color=WHITE,
+        linespacing=1.4,
+    )
+
+    ax.set_xlim(0, 100)
+    ax.set_xticks([])
+
+    fig.text(
+        0.01,
+        0.99,
+        "Nearly 3 in 10 practicum agencies met the threshold for leadership review",
+        ha="left",
+        va="top",
+        fontsize=13,
+        fontweight="bold",
+        color=TITLE,
+    )
+    fig.text(
+        0.01,
+        0.90,
+        "An agency is flagged when two or more concern signals occur at the same time.",
+        ha="left",
+        va="top",
+        fontsize=9,
+        color=GRAY_TEXT,
+    )
+
+    fig.subplots_adjust(top=0.72, bottom=0.08, left=0.01, right=0.99)
+    _save(fig, "fig_01_concern_flag_summary.png")
+
+
+# -----------------------------------------------------------------------------
+# figure 2 - fit vs recommendation
+# -----------------------------------------------------------------------------
+def fig_02_fit_vs_recommendation(suf: pd.DataFrame) -> None:
+    suf = _add_recommendation_pct(suf)
+    mask = suf["concern_flag"].str.lower() == "review recommended"
+
+    fig, ax = plt.subplots(figsize=(10, 6.8))
+    fig.patch.set_facecolor(WHITE)
+    _base(ax, grid="none")
+
+    ax.add_patch(
+        mpatches.Rectangle(
+            (1.8, 0),
+            concern_fit_score - 1.8,
+            concern_recommendation * 100,
+            facecolor=BLUSH,
+            edgecolor="none",
+            alpha=0.65,
+            zorder=0,
         )
-    return dict(Counter(tokens).most_common(top_n))
-
-
-def parse_bigram_string(value: str, top_n: int = 10) -> dict[str, int]:
-    """Parse a saved bigram summary string back into a word-count dictionary."""
-    if not isinstance(value, str):
-        return {}
-    result: dict[str, int] = {}
-    for item in value.split(" | ")[:top_n]:
-        parts = item.rsplit(":", 1)
-        if len(parts) == 2:
-            try:
-                result[parts[0].strip()] = int(parts[1].strip())
-            except ValueError:
-                continue
-    return result
-
-
-def get_display_col(df: pd.DataFrame) -> str:
-    """Use the cleaned display name when available, fall back to raw name."""
-    return "agency_name_display" if "agency_name_display" in df.columns else "agency_name"
-
-
-def blue_color_func(*args, **kwargs) -> str:
-    """Return a blue shade for positive word clouds."""
-    return f"hsl(210, 80%, {random.randint(20, 50)}%)"
-
-
-def red_color_func(*args, **kwargs) -> str:
-    """Return a red shade for concern word clouds."""
-    return f"hsl(5, 80%, {random.randint(20, 50)}%)"
-
-
-# ------------------------------------------------------------------------------
-# Individual figure functions
-# One function per figure keeps the code easy to read and easy to rerun
-# individually when you only need to refresh one chart.
-# ------------------------------------------------------------------------------
-
-
-def fig_01_concern_flag_summary(sufficient_df: pd.DataFrame) -> None:
-    """Horizontal bar chart: how many agencies are flagged vs not flagged."""
-    flagged = int((sufficient_df["concern_flag"] == "review recommended").sum())
-    not_flagged = len(sufficient_df) - flagged
-    flagged_share = round((flagged / len(sufficient_df)) * 100, 1) if len(sufficient_df) else 0
-
-    fig, ax = plt.subplots(figsize=(7, 3.5))
-    bars = ax.barh(
-        ["No flag", "Review recommended"],
-        [not_flagged, flagged],
-        alpha=0.88,
-        color=[COLORS["positive"], COLORS["concern"]],
     )
-    for bar, count in zip(bars, [not_flagged, flagged]):
-        ax.text(
-            count + 1,
-            bar.get_y() + bar.get_height() / 2,
-            str(count),
-            fontsize=11,
-            fontweight="bold",
-            ha="left",
-            va="center",
-        )
-    ax.set_xlabel("Number of agencies")
-    ax.set_xlim(0, max(not_flagged, flagged) + 25)
-    ax.set_title(
-        f"Figure 1. {flagged_share}% of practicum agencies meet the threshold for a leadership review",
-        loc="left",
+
+    ax.text(
+        1.95,
+        60,
+        "Both signals weak",
+        color="#be554d",
+        fontsize=8,
+        va="top",
+        ha="left",
+        linespacing=1.35,
+        fontstyle="italic",
     )
-    plt.tight_layout()
-    save_figure(fig, "fig_01_concern_flag_summary.png")
 
+    ax.axhline(
+        concern_recommendation * 100,
+        color=GRAY_REF,
+        linewidth=0.9,
+        linestyle="--",
+        zorder=1,
+    )
+    ax.axvline(
+        concern_fit_score,
+        color=GRAY_REF,
+        linewidth=0.9,
+        linestyle=":",
+        zorder=1,
+    )
 
-def fig_02_fit_vs_recommendation(sufficient_df: pd.DataFrame) -> None:
-    """Scatter plot: placement quality score vs recommendation rate by flag status."""
-    mask = sufficient_df["concern_flag"] == "review recommended"
-    recommendation_pct = sufficient_df["recommendation_rate"] * 100
+    ax.text(
+        4.96,
+        concern_recommendation * 100 + 1.2,
+        f"{int(concern_recommendation * 100)}% threshold",
+        color=GRAY_REF,
+        fontsize=7.5,
+        ha="right",
+        va="bottom",
+    )
+    ax.text(
+        concern_fit_score + 0.04,
+        2,
+        f"{concern_fit_score:.1f} threshold",
+        color=GRAY_REF,
+        fontsize=7.5,
+        ha="left",
+        va="bottom",
+    )
 
-    fig, ax = plt.subplots(figsize=(9, 6))
     ax.scatter(
-        sufficient_df.loc[~mask, "composite_fit_score"],
-        recommendation_pct.loc[~mask],
-        alpha=0.6,
-        color=COLORS["positive"],
-        label="No flag",
-        s=50,
-        zorder=3,
+        suf.loc[~mask, "placement_quality_score"],
+        suf.loc[~mask, "rec_pct"],
+        color=MUTED_BLUE,
+        s=30,
+        alpha=0.55,
+        linewidths=0,
+        zorder=2,
     )
     ax.scatter(
-        sufficient_df.loc[mask, "composite_fit_score"],
-        recommendation_pct.loc[mask],
-        alpha=0.75,
-        color=COLORS["concern"],
-        label="Flagged for review",
+        suf.loc[mask, "placement_quality_score"],
+        suf.loc[mask, "rec_pct"],
+        color=RED,
+        s=42,
+        alpha=0.80,
         marker="^",
-        s=65,
+        edgecolors=WHITE,
+        linewidths=0.4,
         zorder=4,
     )
-    ax.axhline(70, alpha=0.5, color=COLORS["neutral"], linestyle="--", linewidth=1)
-    ax.axvline(3.5, alpha=0.5, color=COLORS["neutral"], linestyle=":", linewidth=1)
-    ax.text(4.7, 68, "70% threshold", color=COLORS["neutral"], fontsize=8, va="top")
-    ax.text(3.52, 15, "3.5 cut point", color=COLORS["neutral"], fontsize=8, rotation=90, va="bottom")
-    ax.set_xlabel("Placement Quality Score (1-5)")
-    ax.set_ylabel("Recommendation rate (%)")
-    ax.set_title(
-        "Figure 2. Agencies with lower placement quality scores tend to get fewer\n"
-        "recommendations — most flagged agencies cluster in the lower-left quadrant",
-        loc="left",
+
+    ax.set_xlim(1.8, 5.05)
+    ax.set_ylim(0, 104)
+    ax.set_xlabel(
+        "Placement Quality Score", fontsize=9, color=GRAY_TEXT, labelpad=6
     )
-    ax.legend(fontsize=9, frameon=False)
-    plt.tight_layout()
-    save_figure(fig, "fig_02_fit_vs_recommendation.png")
-
-
-def fig_03_sentiment_distribution(sufficient_df: pd.DataFrame) -> None:
-    """Overlapping histograms: sentiment score by concern flag status."""
-    flagged = sufficient_df[sufficient_df["concern_flag"] == "review recommended"]["overall_sentiment_score"]
-    not_flagged = sufficient_df[sufficient_df["concern_flag"] == "no flag"]["overall_sentiment_score"]
-    overall_mean = sufficient_df["overall_sentiment_score"].mean()
-
-    fig, ax = plt.subplots(figsize=(10, 4.5))
-    ax.hist(not_flagged, alpha=0.75, bins=25, color=COLORS["positive"], label=f"No flag ({len(not_flagged)} agencies)")
-    ax.hist(flagged, alpha=0.75, bins=25, color=COLORS["concern"], label=f"Flagged ({len(flagged)} agencies)")
-    ax.axvline(overall_mean, color=COLORS["neutral"], label=f"Overall mean ({overall_mean:.3f})", linestyle="--", linewidth=1.5)
-    ax.set_xlabel("Overall sentiment score")
-    ax.set_ylabel("Number of agencies")
-    ax.set_title(
-        "Figure 3. Flagged agencies skew toward lower sentiment scores, though the two groups still overlap",
-        loc="left",
+    ax.set_ylabel(
+        "Recommendation rate (%)", fontsize=9, color=GRAY_TEXT, labelpad=6
     )
-    ax.legend(frameon=False)
-    plt.tight_layout()
-    save_figure(fig, "fig_03_sentiment_distribution.png")
 
-
-def fig_04_likert_mean_scores(sufficient_df: pd.DataFrame) -> None:
-    """Horizontal bar chart: mean Likert scores sorted ascending so lowest is at bottom."""
-    mean_scores = sufficient_df[likert_cols].mean().round(2)
-    mean_scores = mean_scores.sort_values(ascending=True)
-
-    colors = [
-        COLORS["concern"] if score < 3.7
-        else COLORS["caution"] if score < 3.9
-        else COLORS["positive"]
-        for score in mean_scores
-    ]
-
-    fig, ax = plt.subplots(figsize=(10, 7))
-    bars = ax.barh(
-        [likert_display.get(col, col) for col in mean_scores.index],
-        mean_scores,
-        alpha=0.88,
-        color=colors,
+    title = "Flagged agencies cluster where placement quality and recommendation rates are both low"
+    subtitle = (
+        "Red triangles mark agencies needing review. Gray dots show unflagged agencies. "
+        "The shaded area marks where both measures fall below the concern thresholds."
     )
-    ax.axvline(mean_scores.mean(), color="#121212", linestyle=":", linewidth=1.5, alpha=0.6)
-    ax.set_xlim(1, 5.4)
-    ax.set_xlabel("Mean score (1 = strongly disagree, 5 = strongly agree)")
-    ax.set_title(
-        "Figure 4. Students rate supervision highly, but preparedness and direct practice items score lower",
-        loc="left",
+    _title(fig, title, subtitle)
+
+    fig.subplots_adjust(top=0.87, bottom=0.11, left=0.09, right=0.97)
+    _despine(ax)
+    _save(fig, "fig_02_fit_vs_recommendation.png")
+
+
+# -----------------------------------------------------------------------------
+# figure 3 - sentiment distribution
+# -----------------------------------------------------------------------------
+def fig_03_sentiment_distribution(suf: pd.DataFrame) -> None:
+    flagged = suf[suf["concern_flag"].str.lower() == "review recommended"][
+        "overall_sentiment_score"
+    ].dropna()
+    not_flagged = suf[suf["concern_flag"].str.lower() == "no flag"][
+        "overall_sentiment_score"
+    ].dropna()
+
+    fig, ax = plt.subplots(figsize=(9.5, 4.8))
+    fig.patch.set_facecolor(WHITE)
+    _base(ax, grid="none")
+    ax.set_yticks([])
+
+    sns.kdeplot(
+        not_flagged,
+        ax=ax,
+        color=GRAY_REF,
+        fill=True,
+        alpha=0.45,
+        linewidth=1.5,
     )
-    for bar, score in zip(bars, mean_scores):
+    sns.kdeplot(
+        flagged,
+        ax=ax,
+        color=RED,
+        fill=True,
+        alpha=0.50,
+        linewidth=1.8,
+    )
+
+    grid = np.linspace(
+        min(flagged.min(), not_flagged.min()),
+        max(flagged.max(), not_flagged.max()),
+        400,
+    )
+
+    for series, label, color in [
+        (not_flagged, "no flag", GRAY_REF),
+        (flagged, "flagged", RED),
+    ]:
+        density = gaussian_kde(series)(grid)
+        peak_x = grid[density.argmax()]
+        peak_y = density.max()
         ax.text(
-            score + 0.06,
-            bar.get_y() + bar.get_height() / 2,
-            f"{score:.2f}",
-            fontsize=8.5,
-            ha="left",
-            va="center",
+            peak_x,
+            peak_y * 1.05,
+            label,
+            color=color,
+            fontsize=9.5,
+            fontweight="bold",
+            ha="center",
+            va="bottom",
         )
-    ax.legend(
-        handles=[
-            mpatches.Patch(color=COLORS["concern"], label="Below 3.70"),
-            mpatches.Patch(color=COLORS["caution"], label="3.70 to 3.89"),
-            mpatches.Patch(color=COLORS["positive"], label="3.90 and above"),
-        ],
+
+    ax.axvline(
+        concern_sentiment,
+        color=GRAY_REF,
+        linewidth=1.0,
+        linestyle=":",
+        zorder=1,
+    )
+    ax.text(
+        0.07,
+        0.94,
+        f"Concern threshold  {concern_sentiment:.2f}",
+        transform=ax.transAxes,
+        color=GRAY_REF,
+        fontsize=7.5,
+        va="top",
+    )
+
+    ax.set_xlabel(
+        "Overall sentiment score (VADER)",
+        fontsize=9,
+        color=GRAY_TEXT,
+        labelpad=6,
+    )
+
+    title = "Flagged agencies skew toward lower sentiment, but there is considerable overlap between the two groups"
+    subtitle = "Sentiment is one of five key concern signals, which is why it should be used with other indicators, not alone."
+    _title(fig, title, subtitle)
+
+    fig.subplots_adjust(top=0.87, bottom=0.13, left=0.03, right=0.97)
+    _despine_left(ax)
+    _save(fig, "fig_03_sentiment_distribution.png")
+
+
+# -----------------------------------------------------------------------------
+# figure 4 - likert mean scores
+# -----------------------------------------------------------------------------
+def fig_04_likert_mean_scores(suf: pd.DataFrame) -> None:
+    means = {
+        col: pd.to_numeric(suf[col], errors="coerce").mean()
+        for col in likert_cols
+    }
+
+    plot_df = (
+        pd.DataFrame.from_dict(means, orient="index", columns=["mean"])
+        .dropna()
+        .sort_values("mean", ascending=True)
+        .reset_index()
+        .rename(columns={"index": "col"})
+    )
+    plot_df["label"] = plot_df["col"].map(likert_display)
+    n = len(plot_df)
+
+    colors = [RED if i < 3 else MUTED_BLUE for i in range(n)]
+    mean_all = plot_df["mean"].mean()
+
+    fig, ax = plt.subplots(figsize=(10.5, 6.8))
+    fig.patch.set_facecolor(WHITE)
+    _base(ax, grid="none")
+    ax.tick_params(left=False)
+    ax.xaxis.grid(True, alpha=0.15, color=GRAY_SPINE)
+
+    ax.barh(range(n), plot_df["mean"], color=colors, height=0.55, alpha=0.88)
+    ax.axvline(
+        mean_all, color=GRAY_REF, linewidth=1.0, linestyle="--", alpha=0.7
+    )
+    ax.text(
+        mean_all + 0.02,
+        n - 0.3,
+        f"Mean  {mean_all:.2f}",
+        color=GRAY_REF,
         fontsize=8,
-        frameon=False,
-        loc="lower right",
+        va="top",
     )
-    plt.tight_layout()
-    save_figure(fig, "fig_04_likert_mean_scores.png")
+
+    ax.set_yticks(range(n))
+    ax.set_yticklabels(plot_df["label"], fontsize=9.5, color="#3d4551")
+    ax.set_xlim(1, 5.3)
+    ax.set_xticks([1, 2, 3, 4, 5])
+    ax.set_xticklabels(
+        ["1", "2", "3", "4", "5"], fontsize=8.5, color=GRAY_TEXT
+    )
+    ax.set_xlabel(
+        "Mean score (1 = strongly disagree, 5 = strongly agree)",
+        fontsize=9,
+        color=GRAY_TEXT,
+        labelpad=6,
+    )
+
+    title = "Students are satisfied with supervision but feel less ready for independent practice"
+    subtitle = "The red bars indicate the three lowest-scoring items related to practice readiness, listed from highest to lowest."
+    _title(fig, title, subtitle)
+
+    fig.subplots_adjust(top=0.87, bottom=0.11, left=0.33, right=0.97)
+    _despine_left(ax)
+    _save(fig, "fig_04_likert_mean_scores.png")
 
 
-def fig_05_theme_frequency(sufficient_df: pd.DataFrame) -> None:
-    """Grouped bar chart: theme rates sorted by gap so most problematic themes appear first."""
-    theme_names = sorted(
-        {col.replace("_helpful_pct", "") for col in sufficient_df.columns if col.endswith("_helpful_pct")}
-    )
-    helpful = {name: sufficient_df[f"{name}_helpful_pct"].mean() for name in theme_names}
-    least = {name: sufficient_df[f"{name}_least_pct"].mean() for name in theme_names}
-    gaps = {name: least[name] - helpful[name] for name in theme_names}
-    sorted_names = sorted(theme_names, key=lambda n: gaps[n], reverse=True)
-    labels = [name.replace("_", " ") for name in sorted_names]
+# -----------------------------------------------------------------------------
+# figure 5 - theme frequency
+# -----------------------------------------------------------------------------
+def fig_05_theme_frequency(suf: pd.DataFrame) -> None:
+    theme_display = {
+        "administrative_overload": "Administrative overload",
+        "direct_practice_opportunity": "Direct practice opportunity",
+        "learning_environment": "Learning environment",
+        "organizational_structure": "Organizational structure",
+        "social_justice_alignment": "Social justice alignment",
+        "strong_supervision": "Strong supervision",
+    }
 
-    fig, ax = plt.subplots(figsize=(11, 6))
-    x = range(len(labels))
-    width = 0.38
-    ax.bar(
-        [v - width / 2 for v in x],
-        [helpful[n] for n in sorted_names],
-        width=width,
-        alpha=0.88,
-        color=COLORS["positive"],
-        label="Appeared in most helpful",
+    themes = sorted(theme_display)
+    rows = []
+    for theme in themes:
+        rows.append(
+            {
+                "theme": theme,
+                "label": theme_display[theme],
+                "helpful": pd.to_numeric(
+                    suf[f"{theme}_helpful_pct"], errors="coerce"
+                ).mean(),
+                "least": pd.to_numeric(
+                    suf[f"{theme}_least_pct"], errors="coerce"
+                ).mean(),
+            }
+        )
+
+    plot_df = (
+        pd.DataFrame(rows)
+        .assign(abs_gap=lambda d: (d["least"] - d["helpful"]).abs())
+        .sort_values("abs_gap", ascending=True)
+        .reset_index(drop=True)
     )
-    ax.bar(
-        [v + width / 2 for v in x],
-        [least[n] for n in sorted_names],
-        width=width,
-        alpha=0.88,
-        color=COLORS["concern"],
-        label="Appeared in least helpful",
+    n = len(plot_df)
+
+    fig, ax = plt.subplots(figsize=(9.5, 5.2))
+    fig.patch.set_facecolor(WHITE)
+    _base(ax, grid="none")
+    ax.xaxis.grid(True, alpha=0.15, color=GRAY_SPINE)
+    ax.tick_params(left=False)
+
+    for y, (_, row) in enumerate(plot_df.iterrows()):
+        ax.plot(
+            [row["helpful"], row["least"]],
+            [y, y],
+            color=GRAY_SPINE,
+            linewidth=1.6,
+            zorder=2,
+            solid_capstyle="round",
+        )
+        ax.scatter(row["helpful"], y, color=BLUE, s=72, linewidths=0, zorder=4)
+        ax.scatter(row["least"], y, color=RED, s=72, linewidths=0, zorder=4)
+
+    ax.set_yticks(range(n))
+    ax.set_yticklabels(plot_df["label"], fontsize=10, color="#3d4551")
+    ax.set_xlabel(
+        "Mean % of agency responses tagged with this theme",
+        fontsize=9,
+        color=GRAY_TEXT,
+        labelpad=6,
     )
-    ax.set_xticks(list(x))
-    ax.set_xticklabels(labels, rotation=18, ha="right", fontsize=9)
-    ax.set_ylabel("Mean % of responses tagged")
-    ax.set_title(
-        "Figure 5. Administrative overload appears far more often in least-helpful comments\n"
-        "while strong supervision and direct practice drive most-helpful responses",
-        loc="left",
+    ax.set_xlim(left=0)
+
+    title = (
+        "Strong placements rely on strong supervision and practice,"
+        "while weak ones suffer from excessive paperwork and little client contact"
     )
-    ax.legend(frameon=False)
-    ax.yaxis.grid(True, alpha=0.2)
-    ax.set_axisbelow(True)
-    plt.tight_layout()
-    save_figure(fig, "fig_05_theme_frequency.png")
+    subtitle = (
+        "Blue dot = appeared more often in most-helpful comments      "
+        "Red dot = appeared more often in least-helpful comments"
+    )
+    _title(fig, title, subtitle)
+
+    fig.subplots_adjust(top=0.84, bottom=0.13, left=0.25, right=0.97)
+    _despine(ax)
+    _save(fig, "fig_05_theme_frequency.png")
 
 
+# -----------------------------------------------------------------------------
+# figure 6 - bigram comparison
+# -----------------------------------------------------------------------------
 def fig_06_bigrams_comparison(profiles_df: pd.DataFrame) -> None:
-    """Side-by-side horizontal bar charts: top bigrams in helpful vs least-helpful."""
-    helpful_bigrams: Counter = Counter()
-    least_bigrams: Counter = Counter()
-    for value in profiles_df["most_helpful_top_bigrams"].dropna():
-        helpful_bigrams.update(parse_bigram_string(value, 15))
-    for value in profiles_df["least_helpful_top_bigrams"].dropna():
-        least_bigrams.update(parse_bigram_string(value, 15))
+    helpful = _parse_bigrams(profiles_df["most_helpful_top_bigrams"])
+    least = _parse_bigrams(profiles_df["least_helpful_top_bigrams"])
 
-    top_helpful = helpful_bigrams.most_common(12)
-    top_least = least_bigrams.most_common(12)
+    top_h = helpful.most_common(12)
+    top_l = least.most_common(12)
 
-    fig, (ax_left, ax_right) = plt.subplots(1, 2, figsize=(14, 6))
-    ax_left.barh(
-        [item[0] for item in top_helpful],
-        [item[1] for item in top_helpful],
-        alpha=0.88,
-        color=COLORS["positive"],
+    fig, (ax_l, ax_r) = plt.subplots(1, 2, figsize=(13.5, 5.8))
+    fig.patch.set_facecolor(WHITE)
+
+    for ax, data, color, panel_title in [
+        (ax_l, top_h, BLUE, "Most-helpful comments - top phrases"),
+        (ax_r, top_l, RED, "Least-helpful comments - top phrases"),
+    ]:
+        ax.set_facecolor(WHITE)
+        ax.barh(
+            range(len(data)),
+            [count for _, count in data],
+            color=color,
+            alpha=0.85,
+            height=0.6,
+        )
+        ax.set_yticks(range(len(data)))
+        ax.set_yticklabels([phrase for phrase, _ in data], fontsize=9)
+        ax.invert_yaxis()
+        _spine_style(ax)
+        ax.xaxis.grid(True, alpha=0.15, color=GRAY_SPINE)
+        ax.yaxis.grid(False)
+        ax.set_axisbelow(True)
+        ax.tick_params(axis="x", colors=GRAY_TEXT, labelsize=8.5)
+        ax.tick_params(left=False)
+        ax.set_xlabel(
+            "Cumulative mentions across agencies",
+            fontsize=8.5,
+            color=GRAY_TEXT,
+            labelpad=5,
+        )
+        ax.set_title(
+            panel_title,
+            loc="left",
+            fontsize=10,
+            fontweight="bold",
+            color=color,
+            pad=10,
+        )
+        sns.despine(ax=ax, top=True, right=True, left=True, bottom=False)
+
+    title = "Supportive language shows growth, while unhelpful language reveals frustration"
+    subtitle = "The leading two-word phrases exclude phrases that simply repeat the survey prompt wording."
+    _title(fig, title, subtitle)
+
+    fig.subplots_adjust(
+        top=0.87, bottom=0.11, left=0.10, right=0.98, wspace=0.45
     )
-    ax_left.invert_yaxis()
-    ax_left.set_title("Most helpful - top phrases", loc="left", fontweight="bold")
-    ax_left.tick_params(axis="y", labelsize=9)
-    ax_left.xaxis.grid(True, alpha=0.2)
-    ax_left.set_axisbelow(True)
-
-    ax_right.barh(
-        [item[0] for item in top_least],
-        [item[1] for item in top_least],
-        alpha=0.88,
-        color=COLORS["concern"],
-    )
-    ax_right.invert_yaxis()
-    ax_right.set_title("Least helpful - top phrases", loc="left", fontweight="bold")
-    ax_right.tick_params(axis="y", labelsize=9)
-    ax_right.xaxis.grid(True, alpha=0.2)
-    ax_right.set_axisbelow(True)
-
-    fig.suptitle(
-        "Figure 6. Helpful comments center on confidence and real practice;\n"
-        "least-helpful comments center on admin work and limited client contact",
-        fontsize=11,
-        fontweight="bold",
-        ha="left",
-        x=0.02,
-        y=1.02,
-    )
-    plt.tight_layout()
-    save_figure(fig, "fig_06_bigrams_comparison.png")
+    _save(fig, "fig_06_bigrams_comparison.png")
 
 
+# -----------------------------------------------------------------------------
+# figure 7 - word cloud - most helpful
+# -----------------------------------------------------------------------------
 def fig_07_wordcloud_most_helpful(row_df: pd.DataFrame) -> None:
-    """Word cloud: most common words in most-helpful responses."""
-    helpful_freq = build_word_freq_dict(row_df["most_helpful"])
-    fig, ax = plt.subplots(figsize=(10, 5))
-    ax.imshow(
-        WordCloud(
-            background_color="white",
-            color_func=blue_color_func,
-            height=500,
-            max_words=80,
-            width=1000,
-        ).generate_from_frequencies(helpful_freq),
-        interpolation="bilinear",
-    )
+    freq = _word_freq(row_df["most_helpful"])
+    top12 = set(list(freq)[:12])
+
+    def color_func(word, **kwargs):
+        return BLUE if word in top12 else "#c8d3da"
+
+    wc = WordCloud(
+        background_color=WHITE,
+        color_func=color_func,
+        width=1400,
+        height=680,
+        max_words=80,
+        prefer_horizontal=0.85,
+        collocations=False,
+        min_font_size=11,
+        max_font_size=160,
+    ).generate_from_frequencies(freq)
+
+    fig, ax = plt.subplots(figsize=(12, 5.8))
+    fig.patch.set_facecolor(WHITE)
+    ax.imshow(wc, interpolation="bilinear")
     ax.axis("off")
-    ax.set_title(
-        "Figure 7. Students most often describe support, learning, and hands-on practice\n"
-        "as the most helpful parts of their placement",
-        loc="left",
-        pad=12,
-    )
-    save_figure(fig, "fig_07_wordcloud_most_helpful.png")
+    plt.tight_layout(pad=0)
+    _save(fig, "fig_07_wordcloud_most_helpful.png")
 
 
+# -----------------------------------------------------------------------------
+# figure 8 - word cloud - least helpful
+# -----------------------------------------------------------------------------
 def fig_08_wordcloud_least_helpful(row_df: pd.DataFrame) -> None:
-    """Word cloud: most common words in least-helpful responses."""
-    least_freq = build_word_freq_dict(row_df["least_helpful"])
-    fig, ax = plt.subplots(figsize=(10, 5))
-    ax.imshow(
-        WordCloud(
-            background_color="white",
-            color_func=red_color_func,
-            height=500,
-            max_words=80,
-            width=1000,
-        ).generate_from_frequencies(least_freq),
-        interpolation="bilinear",
-    )
+    extra = {
+        "one",
+        "thing",
+        "would",
+        "also",
+        "really",
+        "lot",
+        "could",
+        "much",
+        "even",
+        "sometimes",
+        "though",
+    }
+    freq = _word_freq(row_df["least_helpful"], extra_stop=extra)
+    top12 = set(list(freq)[:12])
+
+    def color_func(word, **kwargs):
+        return RED if word in top12 else "#cfc8c8"
+
+    wc = WordCloud(
+        background_color=WHITE,
+        color_func=color_func,
+        width=1400,
+        height=680,
+        max_words=80,
+        prefer_horizontal=0.85,
+        collocations=False,
+        min_font_size=11,
+        max_font_size=160,
+    ).generate_from_frequencies(freq)
+
+    fig, ax = plt.subplots(figsize=(12, 5.8))
+    fig.patch.set_facecolor(WHITE)
+    ax.imshow(wc, interpolation="bilinear")
     ax.axis("off")
-    ax.set_title(
-        "Figure 8. Student frustrations most often mention administrative work,\n"
-        "limited direct practice, and not enough client contact",
-        loc="left",
-        pad=12,
-    )
-    save_figure(fig, "fig_08_wordcloud_least_helpful.png")
+    plt.tight_layout(pad=0)
+    _save(fig, "fig_08_wordcloud_least_helpful.png")
 
 
-def fig_09_top_flagged_agencies(sufficient_df: pd.DataFrame) -> None:
-    """Horizontal bar chart: the 10 flagged agencies with the lowest fit scores."""
-    display_col = get_display_col(sufficient_df)
-    flagged_df = (
-        sufficient_df[sufficient_df["concern_flag"] == "review recommended"]
-        .sort_values("composite_fit_score", ascending=True)
+# -----------------------------------------------------------------------------
+# figure 9 - top flagged agencies
+# -----------------------------------------------------------------------------
+def fig_09_top_flagged_agencies(suf: pd.DataFrame) -> None:
+    flagged = (
+        suf[suf["concern_flag"].str.lower() == "review recommended"]
+        .sort_values("placement_quality_score", ascending=True)
         .head(10)
         .copy()
     )
-    flagged_df["label"] = (
-        flagged_df[display_col] + "  (n=" + flagged_df["response_count"].astype(str) + ")"
+    flagged["label"] = flagged["agency_name_display"].apply(
+        lambda s: s if len(s) <= 40 else s[:39].rstrip() + "…"
     )
+    all_mean = suf["placement_quality_score"].mean()
 
-    fig, ax = plt.subplots(figsize=(10, 6.5))
-    bars = ax.barh(flagged_df["label"], flagged_df["composite_fit_score"], alpha=0.88, color=COLORS["concern"])
-    ax.axvline(3.5, alpha=0.6, color=COLORS["neutral"], linestyle="--", linewidth=1, label="Low-fit threshold (3.5)")
-    ax.set_xlim(0, 5)
-    ax.set_xlabel("Placement Quality Score (1-5)")
-    ax.set_title(
-        "Figure 9. The ten flagged agencies with the lowest Placement Quality Scores",
-        loc="left",
+    fig, ax = plt.subplots(figsize=(10.5, 6.2))
+    fig.patch.set_facecolor(WHITE)
+    _base(ax, grid="none")
+    ax.xaxis.grid(True, alpha=0.15, color=GRAY_SPINE)
+    ax.tick_params(left=False)
+
+    y_pos = list(range(len(flagged)))
+    ax.barh(
+        y_pos,
+        flagged["placement_quality_score"],
+        color=RED,
+        alpha=0.85,
+        height=0.55,
     )
-    ax.tick_params(axis="y", labelsize=8.5)
     ax.invert_yaxis()
-    for bar, score in zip(bars, flagged_df["composite_fit_score"]):
-        ax.text(
-            score + 0.06,
-            bar.get_y() + bar.get_height() / 2,
-            f"{score:.2f}",
-            fontsize=8.5,
-            ha="left",
-            va="center",
-        )
-    ax.legend(frameon=False)
-    ax.xaxis.grid(True, alpha=0.2)
-    ax.set_axisbelow(True)
-    plt.tight_layout()
-    save_figure(fig, "fig_09_top_flagged_agencies.png")
+
+    ax.axvline(
+        all_mean, color=GRAY_REF, linewidth=1.0, linestyle="--", alpha=0.8
+    )
+    ax.text(
+        all_mean + 0.02,
+        len(flagged) - 0.5,
+        f"All-agency mean  {all_mean:.2f}",
+        color=GRAY_REF,
+        fontsize=8,
+        va="top",
+    )
+
+    ax.axvline(
+        concern_fit_score,
+        color=GRAY_REF,
+        linewidth=1.0,
+        linestyle=":",
+        alpha=0.8,
+    )
+    ax.text(
+        concern_fit_score + 0.02,
+        -0.4,
+        f"Concern threshold {concern_fit_score:.1f}",
+        color=GRAY_REF,
+        fontsize=7.5,
+        va="top",
+    )
+
+    ax.set_yticks(y_pos)
+    ax.set_yticklabels(flagged["label"], fontsize=9)
+    ax.set_xlim(0, 4.4)
+    ax.set_xlabel(
+        "Placement Quality Score", fontsize=9, color=GRAY_TEXT, labelpad=6
+    )
+    ax.tick_params(axis="x", colors=GRAY_TEXT, labelsize=8.5)
+
+    title = "The lowest-scoring flagged agencies fall well below the all-agency average on Placement Quality Score"
+    subtitle = "These are the ten flagged agencies with the lowest Placement Quality Scores."
+    _title(fig, title, subtitle)
+
+    fig.subplots_adjust(top=0.87, bottom=0.11, left=0.38, right=0.97)
+    _despine_left(ax)
+    _save(fig, "fig_09_top_flagged_agencies.png")
 
 
+# -----------------------------------------------------------------------------
+# figure 10 - yearly fit trend
+# -----------------------------------------------------------------------------
 def fig_10_yearly_fit_trend(trends_df: pd.DataFrame) -> None:
-    """Line chart: mean placement quality score by academic year.
+    trends_df = trends_df.copy()
+    for col in [
+        "placement_quality_score",
+        "response_count",
+        "academic_year_start",
+    ]:
+        trends_df[col] = pd.to_numeric(trends_df[col], errors="coerce")
 
-    Separated from the volume bar chart (fig_11) so each story is clean
-    and both render well on Streamlit without stacking.
-    """
     yearly = (
         trends_df.groupby("academic_year")
         .apply(
             lambda g: pd.Series(
                 {
-                    "academic_year_start": g["academic_year_start"].iloc[0],
-                    "mean_fit_score": round(
-                        (g["composite_fit_score"] * g["response_count"]).sum()
+                    "start": g["academic_year_start"].iloc[0],
+                    "mean_score": round(
+                        (
+                            g["placement_quality_score"] * g["response_count"]
+                        ).sum()
                         / g["response_count"].sum(),
                         2,
                     ),
@@ -478,440 +903,1115 @@ def fig_10_yearly_fit_trend(trends_df: pd.DataFrame) -> None:
             include_groups=False,
         )
         .reset_index()
-        .sort_values("academic_year_start")
+        .sort_values("start")
+        .reset_index(drop=True)
     )
 
-    fig, ax = plt.subplots(figsize=(11, 4.5))
-    ax.plot(
-        yearly["academic_year"],
-        yearly["mean_fit_score"],
-        color=COLORS["positive"],
-        linewidth=2.5,
-        marker="o",
-        markersize=6,
-        zorder=3,
+    years = yearly["academic_year"].tolist()
+    scores = yearly["mean_score"].tolist()
+    x = list(range(len(years)))
+
+    fig, ax = plt.subplots(figsize=(12, 5.2))
+    fig.patch.set_facecolor(WHITE)
+    _base(ax, grid="none")
+    ax.yaxis.grid(True, alpha=0.15, color=GRAY_SPINE)
+
+    ax.axhline(
+        concern_fit_score,
+        color=GRAY_REF,
+        linewidth=0.9,
+        linestyle=":",
+        zorder=1,
     )
-    ax.axhline(3.5, alpha=0.6, color=COLORS["neutral"], linestyle=":", linewidth=1)
     ax.text(
-        yearly["academic_year"].iloc[-1],
-        3.52,
-        "Low-fit threshold (3.5)",
-        color=COLORS["neutral"],
+        0.02,
+        concern_fit_score + 0.02,
+        f"Concern threshold  {concern_fit_score:.1f}",
+        color=GRAY_REF,
         fontsize=8,
-        ha="right",
         va="bottom",
     )
-    ax.set_ylim(3.0, 4.8)
-    ax.set_ylabel("Mean Placement Quality Score")
-    ax.set_xlabel("Academic year")
-    ax.tick_params(axis="x", rotation=40)
-    ax.yaxis.grid(True, alpha=0.2)
-    ax.set_axisbelow(True)
-    for year, score in zip(yearly["academic_year"], yearly["mean_fit_score"]):
-        ax.text(year, score + 0.06, f"{score:.2f}", ha="center", va="bottom", fontsize=8)
-    ax.set_title(
-        "Figure 10. Mean Placement Quality Score by academic year\n"
-        "(weighted by number of responses per agency per year)",
-        loc="left",
+
+    ax.plot(
+        x, scores, color=BLUE, linewidth=2.2, solid_capstyle="round", zorder=3
     )
-    plt.tight_layout()
-    save_figure(fig, "fig_10_yearly_fit_trend.png")
+    ax.scatter(x[-1], scores[-1], color=RED, s=80, zorder=5, linewidths=0)
+
+    ax.annotate(
+        f"{scores[-1]:.2f}\nFirst time below\nthe concern threshold",
+        xy=(x[-1], scores[-1]),
+        xytext=(-3, -0.28),
+        textcoords="offset fontsize",
+        fontsize=8.5,
+        color=RED,
+        fontweight="bold",
+        ha="right",
+        va="top",
+        linespacing=1.35,
+        path_effects=[pe.withStroke(linewidth=2.5, foreground=WHITE)],
+        arrowprops=dict(arrowstyle="-", color=RED, lw=0.8),
+        zorder=6,
+    )
+
+    ax.set_xticks(x)
+    ax.set_xticklabels(
+        years, rotation=38, ha="right", fontsize=8.5, color=GRAY_TEXT
+    )
+    ax.set_ylim(3.0, 4.7)
+    ax.set_yticks([3.0, 3.5, 4.0, 4.5])
+    ax.set_yticklabels(
+        ["3.0", "3.5", "4.0", "4.5"], fontsize=8.5, color=GRAY_TEXT
+    )
+    ax.set_ylabel(
+        "Placement Quality Score", fontsize=9, color=GRAY_TEXT, labelpad=6
+    )
+
+    title = "In 2025-2026, the overall Placement Quality Score fell below the concern threshold for the first time"
+    subtitle = "This shows the yearly average Placement Quality Score, weighted by the number of responses."
+    _title(fig, title, subtitle)
+
+    fig.subplots_adjust(top=0.87, bottom=0.16, left=0.07, right=0.97)
+    _despine(ax)
+    _save(fig, "fig_10_yearly_fit_trend.png")
 
 
+# -----------------------------------------------------------------------------
+# figure 11 - yearly evaluation volume
+# -----------------------------------------------------------------------------
 def fig_11_yearly_evaluation_volume(trends_df: pd.DataFrame) -> None:
-    """Bar chart: number of evaluations submitted per academic year.
+    trends_df = trends_df.copy()
+    for col in ["academic_year_start", "response_count"]:
+        trends_df[col] = pd.to_numeric(trends_df[col], errors="coerce")
 
-    Separated from the fit score line chart (fig_10) so each tells its
-    own clear story and performs well on Streamlit.
-    """
     yearly = (
         trends_df.groupby("academic_year")
         .apply(
             lambda g: pd.Series(
                 {
-                    "academic_year_start": g["academic_year_start"].iloc[0],
-                    "evaluations": int(g["response_count"].sum()),
+                    "start": g["academic_year_start"].iloc[0],
+                    "count": int(g["response_count"].sum()),
                 }
             ),
             include_groups=False,
         )
         .reset_index()
-        .sort_values("academic_year_start")
+        .sort_values("start")
     )
 
-    fig, ax = plt.subplots(figsize=(11, 4.5))
-    bars = ax.bar(
-        yearly["academic_year"],
-        yearly["evaluations"],
-        alpha=0.9,
-        color=COLORS["light_blue"],
+    fig, ax = plt.subplots(figsize=(11, 4.8))
+    fig.patch.set_facecolor(WHITE)
+    _base(ax, grid="y")
+
+    ax.bar(
+        range(len(yearly)),
+        yearly["count"],
+        color=BLUE,
+        alpha=0.90,
+        width=0.65,
     )
-    ax.set_ylabel("Number of evaluations submitted")
-    ax.set_xlabel("Academic year")
-    ax.tick_params(axis="x", rotation=40)
-    ax.yaxis.grid(True, alpha=0.2)
-    ax.set_axisbelow(True)
-    for bar, count in zip(bars, yearly["evaluations"]):
+    ax.set_xticks(range(len(yearly)))
+    ax.set_xticklabels(
+        yearly["academic_year"],
+        rotation=38,
+        ha="right",
+        fontsize=8.5,
+        color=GRAY_TEXT,
+    )
+    ax.set_ylabel(
+        "Number of evaluations submitted",
+        fontsize=9,
+        color=GRAY_TEXT,
+        labelpad=6,
+    )
+    ax.tick_params(axis="y", colors=GRAY_TEXT, labelsize=8.5)
+
+    title = "Evaluation collection more than doubled after 2020, creating a richer evidence base for recent years"
+    subtitle = "Volume was flat from 2014 to 2021, then grew sharply. More responses per year means more reliable agency profiles."
+    _title(fig, title, subtitle)
+
+    fig.subplots_adjust(top=0.87, bottom=0.18, left=0.08, right=0.97)
+    _despine(ax)
+    _save(fig, "fig_11_yearly_evaluation_volume.png")
+
+
+# -----------------------------------------------------------------------------
+# figure 12 - fit score distribution
+# -----------------------------------------------------------------------------
+def fig_12_fit_score_distribution(suf: pd.DataFrame) -> None:
+    data = suf["placement_quality_score"].dropna()
+    _histogram(
+        data,
+        "Most agencies score well; the lower tail is where the concern flag clusters",
+        "Distribution of Placement Quality Scores.",
+        "Placement Quality Score (1 to 5 scale)",
+        concern_fit_score,
+        f"Concern threshold  {concern_fit_score:.1f}",
+        "fig_12_fit_score_distribution.png",
+        x_lo=1.8,
+        x_hi=5.2,
+    )
+
+
+# -----------------------------------------------------------------------------
+# figure 13 - recommendation rate distribution
+# -----------------------------------------------------------------------------
+def fig_13_recommendation_rate_distribution(suf: pd.DataFrame) -> None:
+    suf = _add_recommendation_pct(suf)
+    data = suf["rec_pct"].dropna()
+    _histogram(
+        data,
+        "Most agencies are recommended by most students; a smaller group falls below the threshold",
+        "Distribution of recommendation rates.",
+        "Recommendation rate (%)",
+        concern_recommendation * 100,
+        f"Review threshold  {int(concern_recommendation * 100)}%",
+        "fig_13_recommendation_rate_distribution.png",
+    )
+
+
+# -----------------------------------------------------------------------------
+# figure 14 - sentiment distribution by trend
+# -----------------------------------------------------------------------------
+def fig_14_sentiment_by_trend(suf: pd.DataFrame) -> None:
+    suf = suf.copy()
+    suf["overall_sentiment_score"] = pd.to_numeric(
+        suf["overall_sentiment_score"], errors="coerce"
+    )
+
+    trend_map = {"declining": RED, "stable": GRAY_TEXT, "improving": BLUE}
+
+    fig, ax = plt.subplots(figsize=(9.5, 4.8))
+    fig.patch.set_facecolor(WHITE)
+    _base(ax, grid="none")
+    ax.set_yticks([])
+
+    peaks = []
+    for trend, color in trend_map.items():
+        subset = suf[suf["fit_trend"].str.lower() == trend][
+            "overall_sentiment_score"
+        ].dropna()
+        if len(subset) < 5:
+            continue
+
+        sns.kdeplot(
+            subset,
+            ax=ax,
+            color=color,
+            fill=True,
+            alpha=0.45,
+            linewidth=1.6,
+        )
+
+        grid = np.linspace(subset.min(), subset.max(), 400)
+        density = gaussian_kde(subset)(grid)
+        peaks.append((trend, color, grid[density.argmax()], density.max()))
+
+    for trend, color, peak_x, peak_y in peaks:
         ax.text(
-            bar.get_x() + bar.get_width() / 2,
-            bar.get_height() + 3,
-            str(count),
+            peak_x,
+            peak_y * 1.05,
+            trend,
+            color=color,
+            fontsize=9.5,
+            fontweight="bold",
             ha="center",
             va="bottom",
-            fontsize=8,
         )
-    ax.set_title(
-        "Figure 11. Evaluation volume submitted per academic year",
-        loc="left",
+
+    ax.axvline(
+        concern_sentiment,
+        color=GRAY_REF,
+        linewidth=0.9,
+        linestyle=":",
+        zorder=1,
     )
-    plt.tight_layout()
-    save_figure(fig, "fig_11_yearly_evaluation_volume.png")
-
-
-def fig_12_fit_score_distribution(sufficient_df: pd.DataFrame) -> None:
-    """Histogram: distribution of Placement Quality Scores — EDA figure.
-
-    Gives the reader a feel for the full spread of scores before any
-    grouping or filtering is applied.
-    """
-    scores = sufficient_df["composite_fit_score"].dropna()
-    mean_score = scores.mean()
-    median_score = scores.median()
-
-    fig, ax = plt.subplots(figsize=(9, 4.5))
-    ax.hist(scores, bins=20, alpha=0.88, color=COLORS["positive"], edgecolor="white")
-    ax.axvline(mean_score, color=COLORS["concern"], linestyle="--", linewidth=1.5, label=f"Mean: {mean_score:.2f}")
-    ax.axvline(median_score, color=COLORS["neutral"], linestyle=":", linewidth=1.5, label=f"Median: {median_score:.2f}")
-    ax.axvline(3.5, color=COLORS["caution"], linestyle="-", linewidth=1, alpha=0.7, label="Low-fit threshold: 3.5")
-    ax.set_xlabel("Placement Quality Score (1-5)")
-    ax.set_ylabel("Number of agencies")
-    ax.set_title(
-        "Figure 12. Distribution of Placement Quality Scores across all agencies with sufficient data",
-        loc="left",
+    ax.text(
+        0.07,
+        0.94,
+        f"Concern threshold  {concern_sentiment:.2f}",
+        transform=ax.transAxes,
+        color=GRAY_REF,
+        fontsize=7.5,
+        va="top",
     )
-    ax.legend(frameon=False)
-    ax.yaxis.grid(True, alpha=0.2)
-    ax.set_axisbelow(True)
-    plt.tight_layout()
-    save_figure(fig, "fig_12_fit_score_distribution.png")
-
-
-def fig_13_recommendation_rate_distribution(sufficient_df: pd.DataFrame) -> None:
-    """Histogram: distribution of recommendation rates — EDA figure."""
-    rates = (sufficient_df["recommendation_rate"] * 100).dropna()
-    mean_rate = rates.mean()
-
-    fig, ax = plt.subplots(figsize=(9, 4.5))
-    ax.hist(rates, bins=20, alpha=0.88, color=COLORS["positive"], edgecolor="white")
-    ax.axvline(mean_rate, color=COLORS["concern"], linestyle="--", linewidth=1.5, label=f"Mean: {mean_rate:.1f}%")
-    ax.axvline(70, color=COLORS["caution"], linestyle="-", linewidth=1, alpha=0.7, label="Review threshold: 70%")
-    ax.set_xlabel("Recommendation rate (%)")
-    ax.set_ylabel("Number of agencies")
-    ax.set_title(
-        "Figure 13. Distribution of recommendation rates across all agencies with sufficient data",
-        loc="left",
+    ax.set_xlabel(
+        "Overall sentiment score (VADER)",
+        fontsize=9,
+        color=GRAY_TEXT,
+        labelpad=6,
     )
-    ax.legend(frameon=False)
-    ax.yaxis.grid(True, alpha=0.2)
-    ax.set_axisbelow(True)
-    plt.tight_layout()
-    save_figure(fig, "fig_13_recommendation_rate_distribution.png")
+
+    title = "Sentiment scores are mildly positive for most agencies, but declining agencies skew toward lower sentiment"
+    subtitle = "Sentiment distribution by placement quality trend direction."
+    _title(fig, title, subtitle)
+
+    fig.subplots_adjust(top=0.87, bottom=0.13, left=0.03, right=0.97)
+    _despine_left(ax)
+    _save(fig, "fig_14_sentiment_distribution_eda.png")
 
 
-def fig_14_sentiment_score_distribution(sufficient_df: pd.DataFrame) -> None:
-    """Histogram: distribution of overall sentiment scores — EDA figure."""
-    scores = sufficient_df["overall_sentiment_score"].dropna()
-    mean_score = scores.mean()
-
-    fig, ax = plt.subplots(figsize=(9, 4.5))
-    ax.hist(scores, bins=20, alpha=0.88, color=COLORS["positive"], edgecolor="white")
-    ax.axvline(mean_score, color=COLORS["concern"], linestyle="--", linewidth=1.5, label=f"Mean: {mean_score:.3f}")
-    ax.axvline(0.05, color=COLORS["caution"], linestyle="-", linewidth=1, alpha=0.7, label="Concern threshold: 0.05")
-    ax.set_xlabel("Overall sentiment score (VADER compound)")
-    ax.set_ylabel("Number of agencies")
-    ax.set_title(
-        "Figure 14. Distribution of sentiment scores — most agencies cluster in mildly positive territory",
-        loc="left",
-    )
-    ax.legend(frameon=False)
-    ax.yaxis.grid(True, alpha=0.2)
-    ax.set_axisbelow(True)
-    plt.tight_layout()
-    save_figure(fig, "fig_14_sentiment_distribution_eda.png")
-
-
+# -----------------------------------------------------------------------------
+# figure 15 - agency trend spotlight
+# -----------------------------------------------------------------------------
 def fig_15_agency_trend_spotlight(
     trends_df: pd.DataFrame,
     profiles_df: pd.DataFrame,
 ) -> None:
-    """Gray-out trend chart: all agency lines in gray, top flagged agencies in red.
+    trends_df = trends_df.copy()
+    for col in [
+        "placement_quality_score",
+        "response_count",
+        "academic_year_start",
+    ]:
+        trends_df[col] = pd.to_numeric(trends_df[col], errors="coerce")
 
-    Inspired by the Economist / Cedric Scherer technique of graying out
-    everything that is not the story and bringing the story forward in color.
-    Every reader should immediately see which agencies are declining and roughly
-    when the slide started — without reading a single number first.
-
-    Layout:
-        - All agencies with 3+ years of data: thin gray lines, low opacity
-        - Top 6 flagged agencies (worst fit + most concern signals): red lines
-        - Program-wide weighted mean: thick dark dashed reference line
-        - Low-fit threshold at 3.5: subtle horizontal reference
-        - Right-edge labels for each highlighted agency, with white outline
-          so the text stays readable over gray background lines
-    """
-    # only agencies with at least 3 years of data — keeps the gray layer
-    # meaningful and avoids one-year stubs cluttering the background
     year_counts = (
         trends_df[trends_df["data_quality"] == "sufficient"]
         .groupby("agency_name")["academic_year"]
         .count()
-        .rename("year_count")
     )
-    sufficient_agencies = year_counts[year_counts >= 3].index
-    trends_sufficient = trends_df[trends_df["agency_name"].isin(sufficient_agencies)].copy()
+    sufficient = set(year_counts[year_counts >= 3].index)
+    ts = trends_df[trends_df["agency_name"].isin(sufficient)].copy()
 
-    # top 6 flagged agencies: most concern signals first, then lowest fit score
-    display_col = get_display_col(profiles_df)
-    spotlight_df = (
+    spot = (
         profiles_df[
-            (profiles_df["concern_flag"] == "review recommended")
-            & (profiles_df["agency_name"].isin(sufficient_agencies))
+            profiles_df["concern_flag"].str.lower().eq("review recommended")
+            & profiles_df["agency_name"].isin(sufficient)
         ]
         .sort_values(
-            ["concern_indicator_count", "composite_fit_score"],
+            ["concern_indicator_count", "placement_quality_score"],
             ascending=[False, True],
         )
-        .head(6)
+        .head(3)
     )
-    spotlight_agencies = set(spotlight_df["agency_name"])
-    spotlight_labels = dict(zip(spotlight_df["agency_name"], spotlight_df[display_col]))
 
-    # build a chronologically sorted x-axis from the year labels
+    spotlight_names = list(spot["agency_name"])
+    spotlight_labels = dict(
+        zip(spot["agency_name"], spot["agency_name_display"])
+    )
+    warm = ["#5B252B", "#B34F5B", "#C5979B"]
+    agency_color = {name: warm[i] for i, name in enumerate(spotlight_names)}
+
     year_order = (
-        trends_sufficient[["academic_year", "academic_year_start"]]
+        ts[["academic_year", "academic_year_start"]]
         .drop_duplicates()
         .sort_values("academic_year_start")["academic_year"]
         .tolist()
     )
     year_to_x = {year: i for i, year in enumerate(year_order)}
+    n_years = len(year_order)
 
-    # program-wide weighted mean per year — weights by response count so
-    # agencies with more data contribute proportionally more to the average
     yearly_mean = (
-        trends_sufficient.groupby("academic_year")
+        ts.groupby("academic_year")
         .apply(
-            lambda g: (g["composite_fit_score"] * g["response_count"]).sum()
-            / g["response_count"].sum(),
+            lambda g: pd.Series(
+                {
+                    "start": g["academic_year_start"].iloc[0],
+                    "mean": (
+                        g["placement_quality_score"] * g["response_count"]
+                    ).sum()
+                    / g["response_count"].sum(),
+                }
+            ),
             include_groups=False,
         )
-        .round(2)
+        .reset_index()
+        .sort_values("start")
     )
 
-    fig, ax = plt.subplots(figsize=(13, 7))
-    fig.patch.set_facecolor(COLORS["background"])
-    ax.set_facecolor(COLORS["background"])
+    fig, ax = plt.subplots(figsize=(12, 6.2))
+    fig.patch.set_facecolor(WHITE)
+    _base(ax, grid="none")
 
-    # layer 1: all non-spotlight agencies in gray
-    for agency_name, agency_df in trends_sufficient.groupby("agency_name"):
-        if agency_name in spotlight_agencies:
+    for agency, group in ts.groupby("agency_name"):
+        if agency in spotlight_names:
             continue
-        agency_sorted = (
-            agency_df.set_index("academic_year").reindex(year_order).reset_index()
-        )
-        x_vals = [year_to_x[y] for y in agency_sorted["academic_year"]]
-        y_vals = agency_sorted["composite_fit_score"].tolist()
-        ax.plot(
-            x_vals,
-            y_vals,
-            alpha=0.15,
-            color=COLORS["neutral"],
-            linewidth=0.9,
-            solid_capstyle="round",
-            zorder=1,
-        )
 
-    # layer 2: program mean as the reference anchor
-    mean_x = [year_to_x[y] for y in year_order if y in yearly_mean.index]
-    mean_y = [yearly_mean[y] for y in year_order if y in yearly_mean.index]
+        group = group.sort_values("academic_year_start")
+        xs = [year_to_x[year] for year in group["academic_year"]]
+        ys = [
+            group.loc[
+                group["academic_year"] == year, "placement_quality_score"
+            ].iloc[0]
+            for year in group["academic_year"]
+        ]
+
+        if len(xs) >= 2:
+            ax.plot(
+                xs,
+                ys,
+                color=MUTED_BLUE,
+                linewidth=0.7,
+                alpha=0.3,
+                solid_capstyle="round",
+                zorder=1,
+            )
+
+    mean_xs = [year_to_x[year] for year in yearly_mean["academic_year"]]
+    mean_ys = [
+        yearly_mean.loc[yearly_mean["academic_year"] == year, "mean"].iloc[0]
+        for year in yearly_mean["academic_year"]
+    ]
     ax.plot(
-        mean_x,
-        mean_y,
-        alpha=0.9,
-        color="#2c3e50",
+        mean_xs,
+        mean_ys,
+        color=GRAY_TEXT,
+        linewidth=1.6,
         linestyle="--",
-        linewidth=2.0,
-        zorder=2,
         solid_capstyle="round",
+        zorder=2,
     )
 
-    # layer 3: spotlight agencies in slightly varying red shades
-    # so overlapping lines at similar y-values stay distinguishable
-    red_shades = [
-        "#c0392b", "#e74c3c", "#a93226",
-        "#cb4335", "#b03a2e", "#d98880",
-    ]
+    ax.axhline(
+        concern_fit_score,
+        color=GRAY_REF,
+        linewidth=0.9,
+        linestyle=":",
+        zorder=1,
+    )
+    ax.text(
+        0.05,
+        concern_fit_score + 0.03,
+        f"Concern threshold  {concern_fit_score:.1f}",
+        color=GRAY_REF,
+        fontsize=8,
+        va="bottom",
+    )
 
-    for i, (_, row) in enumerate(spotlight_df.iterrows()):
-        agency_name = row["agency_name"]
-        agency_df = trends_sufficient[trends_sufficient["agency_name"] == agency_name]
-        # keep academic_year as the index so last_valid_index() returns a year
-        # string like "2025-2026" rather than an integer position
-        agency_sorted = agency_df.set_index("academic_year").reindex(year_order)
-        scores = agency_sorted["composite_fit_score"]
-        x_vals = [year_to_x[y] for y in agency_sorted.index]
-        color = red_shades[i % len(red_shades)]
+    label_items = []
+    if mean_xs:
+        label_items.append(
+            {
+                "y": mean_ys[-1],
+                "text": "Agency mean",
+                "color": GRAY_TEXT,
+                "fontweight": "normal",
+                "fontsize": 8,
+                "stroke": False,
+            }
+        )
+
+    for name in spotlight_names:
+        color = agency_color[name]
+        group = ts[ts["agency_name"] == name].sort_values(
+            "academic_year_start"
+        )
+        xs = [year_to_x[year] for year in group["academic_year"]]
+        ys = [
+            group.loc[
+                group["academic_year"] == year, "placement_quality_score"
+            ].iloc[0]
+            for year in group["academic_year"]
+        ]
+
+        if len(xs) < 2:
+            continue
 
         ax.plot(
-            x_vals,
-            scores.tolist(),
-            alpha=0.9,
+            xs,
+            ys,
             color=color,
-            linewidth=2.2,
-            marker="o",
-            markersize=4,
-            markeredgewidth=0,
+            linewidth=2.4,
             solid_capstyle="round",
             zorder=4,
         )
 
-        # right-edge label at the last non-null data point
-        # white path-effect outline keeps the label readable over gray lines
-        last_valid_idx = scores.last_valid_index()
-        if last_valid_idx is not None:
-            last_x = year_to_x[last_valid_idx]
-            last_y = scores[last_valid_idx]
-            raw_label = spotlight_labels.get(agency_name, agency_name)
-            label = raw_label[:28] + "…" if len(raw_label) > 28 else raw_label
-            ax.text(
-                last_x + 0.12,
-                last_y,
-                label,
-                fontsize=8,
-                va="center",
-                ha="left",
-                color=color,
-                fontweight="bold",
-                path_effects=[
-                    pe.withStroke(linewidth=2.5, foreground=COLORS["background"])
-                ],
-                zorder=5,
-            )
+        raw = spotlight_labels[name]
+        label = raw[:30] + "…" if len(raw) > 30 else raw
+        label_items.append(
+            {
+                "y": ys[-1],
+                "text": label,
+                "color": color,
+                "fontweight": "bold",
+                "fontsize": 8.8,
+                "stroke": True,
+            }
+        )
 
-    # low-fit reference line
-    ax.axhline(3.5, alpha=0.4, color=COLORS["caution"], linestyle=":", linewidth=1.2, zorder=1)
+    label_items.sort(key=lambda d: -d["y"])
+    min_gap = 0.22
+    placed_y = None
+    x_right = (n_years - 1) + 0.18
+
+    for item in label_items:
+        y_placed = (
+            item["y"]
+            if placed_y is None
+            else min(item["y"], placed_y - min_gap)
+        )
+        placed_y = y_placed
+
+        kwargs = {
+            "color": item["color"],
+            "fontsize": item["fontsize"],
+            "va": "center",
+            "ha": "left",
+            "fontweight": item["fontweight"],
+            "zorder": 5,
+        }
+        if item["stroke"]:
+            kwargs["path_effects"] = [
+                pe.withStroke(linewidth=2.5, foreground=WHITE)
+            ]
+
+        ax.text(x_right, y_placed, item["text"], **kwargs)
+
+    ax.set_xticks(range(n_years))
+    ax.set_xticklabels(
+        year_order,
+        rotation=38,
+        ha="right",
+        fontsize=8.5,
+        color=GRAY_TEXT,
+    )
+    ax.set_ylim(1.3, 5.3)
+    ax.set_yticks([2, 3, 4, 5])
+    ax.set_yticklabels(["2", "3", "4", "5"], fontsize=8.5, color=GRAY_TEXT)
+    ax.set_xlim(-0.4, n_years + 1.8)
+    ax.set_ylabel(
+        "Placement Quality Score", fontsize=9, color=GRAY_TEXT, labelpad=6
+    )
+
+    title = (
+        "Trend tracking highlights agencies that have stayed weak over time"
+    )
+    subtitle = "Gray lines show all agencies. Highlighted agencies are flagged sites with the weakest recent multi-year trajectories."
+    _title(fig, title, subtitle)
+
+    fig.subplots_adjust(top=0.87, bottom=0.15, left=0.05, right=0.80)
+    _despine(ax)
+    _save(fig, "fig_15_agency_trend_spotlight.png")
+
+
+# -----------------------------------------------------------------------------
+# figure 16A - BSW vs MSW dumbbell
+# -----------------------------------------------------------------------------
+def fig_16a_bsw_msw_dumbbell(raw_df: pd.DataFrame) -> None:
+    bsw_color = "#548578"
+    msw_color = "#94555c"
+    alpha_sig = 1.00
+    alpha_ns = 0.28
+
+    df = raw_df.copy()
+    df["program_level"] = (
+        df["program_year"]
+        .astype(str)
+        .str.strip()
+        .str.lower()
+        .map(program_level_display_map)
+    )
+
+    for col in placement_quality_cols:
+        df[col] = df[col].astype(str).str.strip().str.lower().map(likert_map)
+
+    df["Placement Quality Score"] = df[placement_quality_cols].mean(axis=1)
+
+    bsw = df[df["program_level"] == "BSW"]
+    msw = df[df["program_level"] == "MSW"]
+
+    rows = []
+    for col, label in placement_metric_labels_long.items():
+        a = bsw[col].dropna()
+        b = msw[col].dropna()
+        _, p_value = ttest_ind(a, b, equal_var=False)
+
+        rows.append(
+            {
+                "label": label,
+                "bsw_mean": round(a.mean(), 3),
+                "msw_mean": round(b.mean(), 3),
+                "gap": round(b.mean() - a.mean(), 3),
+                "significant": p_value < 0.05,
+            }
+        )
+
+    plot_df = (
+        pd.DataFrame(rows)
+        .sort_values("gap", ascending=True)
+        .reset_index(drop=True)
+    )
+    n = len(plot_df)
+    n_sig = int(plot_df["significant"].sum())
+    x_min = plot_df[["bsw_mean", "msw_mean"]].min().min() - 0.10
+    x_max = plot_df[["bsw_mean", "msw_mean"]].max().max() + 0.20
+
+    fig, ax = plt.subplots(figsize=(9.5, 5.0))
+    fig.patch.set_facecolor(WHITE)
+    _base(ax, grid="none")
+    ax.xaxis.grid(True, alpha=0.15, color=GRAY_SPINE)
+    ax.tick_params(left=False)
+
+    for y, (_, row) in enumerate(plot_df.iterrows()):
+        point_alpha = alpha_sig if row["significant"] else alpha_ns
+        line_alpha = 0.55 if row["significant"] else 0.18
+
+        ax.plot(
+            [row["bsw_mean"], row["msw_mean"]],
+            [y, y],
+            color=GRAY_SPINE,
+            linewidth=1.6,
+            alpha=line_alpha,
+            zorder=2,
+            solid_capstyle="round",
+        )
+        ax.scatter(
+            row["bsw_mean"],
+            y,
+            color=bsw_color,
+            s=74,
+            alpha=point_alpha,
+            linewidths=0,
+            zorder=4,
+        )
+        ax.scatter(
+            row["msw_mean"],
+            y,
+            color=msw_color,
+            s=74,
+            alpha=point_alpha,
+            linewidths=0,
+            zorder=4,
+        )
+
     ax.text(
-        0, 3.52,
-        "low-fit threshold (3.5)",
-        color=COLORS["caution"],
-        fontsize=8,
+        x_max,
+        n - 0.45,
+        "BSW",
+        color=bsw_color,
+        fontsize=8.5,
+        ha="right",
+        va="center",
+        fontweight="bold",
+    )
+    ax.text(
+        x_max,
+        n - 1.0,
+        "MSW",
+        color=msw_color,
+        fontsize=8.5,
+        ha="right",
+        va="center",
+        fontweight="bold",
+    )
+
+    ax.set_yticks(range(n))
+    ax.set_yticklabels(plot_df["label"], fontsize=9.5, color="#3d4551")
+    ax.set_xlim(x_min, x_max)
+    ax.set_xlabel("Mean score", fontsize=9, color=GRAY_TEXT, labelpad=6)
+    ax.tick_params(axis="x", colors=GRAY_TEXT, labelsize=8.5)
+
+    title = "MSW students rated placements slightly higher than BSW students on all six measures"
+    subtitle = (
+        f"Full-color rows mark the {n_sig} measures where the difference was statistically meaningful. "
+        "Muted rows show smaller differences not confirmed at the 0.05 level."
+    )
+    _title(fig, title, subtitle)
+
+    fig.subplots_adjust(top=0.87, bottom=0.12, left=0.33, right=0.97)
+    _despine_left(ax)
+    _save(fig, "fig_16a_bsw_msw_dumbbell.png")
+
+
+# -----------------------------------------------------------------------------
+# figure 16B - recommendation rate bar
+# -----------------------------------------------------------------------------
+def fig_16b_bsw_msw_recommendation(raw_df: pd.DataFrame) -> None:
+    bsw_color = "#42675d"
+    msw_color = "#93424b"
+
+    df = raw_df.copy()
+    df["program_level"] = (
+        df["program_year"]
+        .astype(str)
+        .str.strip()
+        .str.lower()
+        .map(program_level_display_map)
+    )
+    df["recommend_num"] = (
+        df["recommend"]
+        .astype(str)
+        .str.strip()
+        .str.lower()
+        .map({"yes": 1, "no": 0})
+    )
+
+    bsw = df[df["program_level"] == "BSW"]
+    msw = df[df["program_level"] == "MSW"]
+    bsw_r = round(bsw["recommend_num"].mean() * 100, 1)
+    msw_r = round(msw["recommend_num"].mean() * 100, 1)
+
+    fig, ax = plt.subplots(figsize=(7.5, 4.4))
+    fig.patch.set_facecolor(WHITE)
+    _base(ax, grid="y")
+
+    ax.bar(
+        ["BSW", "MSW"],
+        [bsw_r, msw_r],
+        color=[bsw_color, msw_color],
+        width=0.4,
+        alpha=0.88,
+    )
+
+    ax.set_ylim(0, min(100, max(bsw_r, msw_r) + 18))
+    ax.set_ylabel(
+        "Recommendation rate (%)", fontsize=9, color=GRAY_TEXT, labelpad=6
+    )
+    ax.tick_params(axis="x", colors=GRAY_TEXT, labelsize=10)
+    ax.tick_params(axis="y", colors=GRAY_TEXT, labelsize=8.5)
+
+    title = "BSW and MSW students recommend their placements at nearly identical rates"
+    subtitle = "The difference between the two groups is small."
+    _title(fig, title, subtitle)
+
+    fig.subplots_adjust(top=0.84, bottom=0.14, left=0.13, right=0.94)
+    _despine(ax)
+    _save(fig, "fig_16b_bsw_msw_recommendation.png")
+
+
+# -----------------------------------------------------------------------------
+# figure 17 - competency alignment scatter
+# -----------------------------------------------------------------------------
+def fig_17_competency_alignment(suf: pd.DataFrame) -> None:
+    analysis_df = suf.dropna(
+        subset=["mean_competency_score", "placement_quality_score"]
+    )
+
+    is_flag = analysis_df["concern_flag"].str.lower().eq("review recommended")
+    is_mis = (
+        analysis_df["misalignment_flag"]
+        .str.lower()
+        .eq("score-narrative mismatch")
+    )
+
+    background_df = analysis_df[~is_flag & ~is_mis]
+    flagged_df = analysis_df[is_flag & ~is_mis]
+    mismatch_df = analysis_df[is_mis]
+
+    fig, ax = plt.subplots(figsize=(9.5, 6.8))
+    fig.patch.set_facecolor(WHITE)
+    ax.set_facecolor(WHITE)
+
+    for spine_name, spine in ax.spines.items():
+        if spine_name in ("top", "right"):
+            spine.set_visible(False)
+        else:
+            spine.set_color(GRAY_SPINE)
+            spine.set_linewidth(0.8)
+
+    ax.xaxis.grid(False)
+    ax.yaxis.grid(False)
+
+    ax.scatter(
+        background_df["mean_competency_score"],
+        background_df["placement_quality_score"],
+        color="#D9E8F2",
+        s=28,
+        alpha=0.55,
+        linewidths=0,
+        zorder=2,
+    )
+    ax.scatter(
+        flagged_df["mean_competency_score"],
+        flagged_df["placement_quality_score"],
+        color=MUTED_BLUE,
+        s=32,
+        alpha=0.75,
+        linewidths=0,
+        zorder=3,
+    )
+
+    ax.axhline(
+        concern_fit_score,
+        color=GRAY_REF,
+        linewidth=0.9,
+        linestyle=":",
+        zorder=1,
+    )
+    x_min_label = analysis_df["mean_competency_score"].min() - 0.3
+    ax.text(
+        x_min_label,
+        concern_fit_score + 0.03,
+        f"Concern threshold  {concern_fit_score:.1f}",
+        color=GRAY_REF,
+        fontsize=7.5,
         va="bottom",
         ha="left",
-        alpha=0.8,
     )
 
-    # axis formatting
-    ax.set_xticks(range(len(year_order)))
-    ax.set_xticklabels(year_order, rotation=40, ha="right", fontsize=9)
-    ax.set_ylabel("Placement Quality Score (1-5)", fontsize=10)
-    ax.set_ylim(1.8, 5.2)
-    ax.set_xlim(-0.4, len(year_order) - 0.4)
-    ax.yaxis.grid(True, alpha=0.15, color=COLORS["neutral"], linewidth=0.7)
-    ax.set_axisbelow(True)
-    ax.spines["right"].set_visible(False)
-    ax.spines["top"].set_visible(False)
+    ax.scatter(
+        mismatch_df["mean_competency_score"],
+        mismatch_df["placement_quality_score"],
+        color=RED,
+        s=110,
+        alpha=0.95,
+        edgecolors=WHITE,
+        linewidths=0.8,
+        marker="D",
+        zorder=5,
+    )
 
-    # legend
-    legend_elements = [
-        Line2D([0], [0], color=COLORS["neutral"], alpha=0.4, linewidth=1.5, label="All other agencies"),
-        Line2D([0], [0], color="#2c3e50", linewidth=2.0, linestyle="--", label="Program mean"),
-        Line2D([0], [0], color=COLORS["concern"], linewidth=2.2, label="Flagged agencies (highlighted)"),
+    for _, row in mismatch_df.iterrows():
+        name = row["agency_name_display"]
+        name = name[:38] + "…" if len(name) > 38 else name
+        comp = row["mean_competency_score"]
+        pqs = row["placement_quality_score"]
+        sent = row["overall_sentiment_score"]
+
+        detail = (
+            f"Competency {comp:.1f}  |  Placement {pqs:.2f}"
+            f"  |  Sentiment {sent:.3f}"
+        )
+
+        ax.annotate(
+            name,
+            xy=(comp, pqs),
+            xytext=(0, 22),
+            textcoords="offset points",
+            fontsize=8.8,
+            color=RED,
+            fontweight="bold",
+            ha="center",
+            va="bottom",
+            path_effects=[pe.withStroke(linewidth=2.5, foreground=WHITE)],
+            zorder=6,
+        )
+        ax.annotate(
+            detail,
+            xy=(comp, pqs),
+            xytext=(0, 10),
+            textcoords="offset points",
+            fontsize=7.8,
+            color=RED,
+            fontweight="bold",
+            ha="center",
+            va="bottom",
+            path_effects=[pe.withStroke(linewidth=2.5, foreground=WHITE)],
+            zorder=6,
+        )
+
+    x_pad = 0.4
+    ax.set_xlim(
+        analysis_df["mean_competency_score"].min() - x_pad,
+        analysis_df["mean_competency_score"].max() + x_pad,
+    )
+    ax.set_ylim(1.8, 5.1)
+    ax.set_xlabel(
+        "Mean program competency score",
+        fontsize=9,
+        color=GRAY_TEXT,
+        labelpad=6,
+    )
+    ax.set_ylabel(
+        "Placement Quality Score", fontsize=9, color=GRAY_TEXT, labelpad=6
+    )
+    ax.tick_params(colors=GRAY_TEXT, labelsize=8.5)
+
+    title = "Passing competency benchmarks does not predict a strong placement experience"
+    subtitle = (
+        "Competency scores and Placement Quality Scores show a weak correlation (r = -0.009, p = 0.89), "
+        "indicating they are mostly unrelated.\nTwo agencies met the required standards, but students "
+        "reported some of the poorest experiences in the dataset."
+    )
+    _title(fig, title, subtitle)
+
+    fig.subplots_adjust(top=0.87, bottom=0.11, left=0.09, right=0.97)
+    _despine(ax)
+    _save(fig, "fig_17_competency_alignment_scatter.png")
+
+
+# -----------------------------------------------------------------------------
+# figure 17B - score range comparison
+# -----------------------------------------------------------------------------
+def fig_17b_score_range_comparison(suf: pd.DataFrame) -> None:
+    comp_s = pd.to_numeric(
+        suf["mean_competency_score"], errors="coerce"
+    ).dropna()
+    pqs_s = pd.to_numeric(
+        suf["placement_quality_score"], errors="coerce"
+    ).dropna()
+
+    strips = [
+        {
+            "label": "Competency benchmark scores",
+            "color": BLUE,
+            "v_min": comp_s.min(),
+            "v_mean": comp_s.mean(),
+            "v_max": comp_s.max(),
+            "x_lo": 84.5,
+            "x_hi": 95.0,
+            "x_ticks": [86, 88, 90, 92, 94],
+            "fmt": ".1f",
+            "span": f"Range spans {comp_s.max() - comp_s.min():.1f} points",
+        },
+        {
+            "label": "Agency Placement Quality Score",
+            "color": TEAL,
+            "v_min": pqs_s.min(),
+            "v_mean": pqs_s.mean(),
+            "v_max": pqs_s.max(),
+            "x_lo": 1.8,
+            "x_hi": 5.4,
+            "x_ticks": [2.0, 2.5, 3.0, 3.5, 4.0, 4.5, 5.0],
+            "fmt": ".2f",
+            "span": f"Range spans {pqs_s.max() - pqs_s.min():.2f} points",
+        },
     ]
-    ax.legend(handles=legend_elements, fontsize=8.5, frameon=False, loc="upper right")
 
-    flagged_count = len(spotlight_agencies)
-    total_count = trends_sufficient["agency_name"].nunique()
-    ax.set_title(
-        f"Figure 15. Among {total_count} agencies with multi-year trend data, "
-        f"these {flagged_count} flagged agencies\n"
-        "have the lowest placement quality scores — and most have been declining for several years",
-        loc="left",
-        fontsize=11,
-        fontweight="bold",
-        pad=14,
+    fig, axes = plt.subplots(2, 1, figsize=(10.5, 6.0))
+    fig.patch.set_facecolor(WHITE)
+
+    for ax, strip in zip(axes, strips):
+        ax.set_facecolor(WHITE)
+
+        for sp, spine in ax.spines.items():
+            if sp == "bottom":
+                spine.set_color(GRAY_SPINE)
+                spine.set_linewidth(0.8)
+            else:
+                spine.set_visible(False)
+
+        ax.set_xlim(strip["x_lo"], strip["x_hi"])
+        ax.set_ylim(0, 1)
+        ax.set_yticks([])
+        ax.yaxis.grid(False)
+        ax.xaxis.grid(False)
+        ax.set_xticks(strip["x_ticks"])
+        ax.set_xticklabels(
+            [str(tick) for tick in strip["x_ticks"]],
+            fontsize=8.5,
+            color=GRAY_TEXT,
+        )
+        ax.tick_params(axis="x", length=4, color=GRAY_SPINE)
+
+        color = strip["color"]
+        y = 0.52
+
+        ax.plot(
+            [strip["v_min"], strip["v_max"]],
+            [y, y],
+            color=color,
+            linewidth=4.0,
+            solid_capstyle="round",
+            zorder=3,
+        )
+
+        for value, stat_name in [
+            (strip["v_min"], "Minimum"),
+            (strip["v_max"], "Maximum"),
+            (strip["v_mean"], "Mean"),
+        ]:
+            ax.scatter(
+                value,
+                y,
+                s=110,
+                color=color,
+                edgecolors=WHITE,
+                linewidths=1.8,
+                zorder=5,
+            )
+            ax.text(
+                value,
+                y + 0.20,
+                stat_name,
+                ha="center",
+                va="bottom",
+                fontsize=8.5,
+                color=color,
+                fontweight="bold",
+            )
+            ax.text(
+                value,
+                y - 0.20,
+                f"{value:{strip['fmt']}}",
+                ha="center",
+                va="top",
+                fontsize=10,
+                color=color,
+                fontweight="bold",
+            )
+
+        ax.text(
+            strip["x_hi"],
+            0.04,
+            strip["span"],
+            ha="right",
+            va="bottom",
+            fontsize=8,
+            color=GRAY_TEXT,
+            fontstyle="italic",
+        )
+        ax.text(
+            strip["x_lo"],
+            0.99,
+            strip["label"],
+            ha="left",
+            va="top",
+            fontsize=11,
+            color=color,
+            fontweight="bold",
+        )
+
+    title = "Competency benchmark scores stay tightly clustered, while agency Placement Quality Scores vary much more"
+    subtitle = (
+        f"Competency benchmark scores range from {comp_s.min():.1f} to {comp_s.max():.1f}, "
+        f"while Placement Quality Scores range from {pqs_s.min():.1f} to {pqs_s.max():.1f}."
+    )
+    _title(fig, title, subtitle)
+
+    fig.subplots_adjust(
+        top=0.88, bottom=0.07, left=0.04, right=0.97, hspace=0.6
+    )
+    _save(fig, "fig_17b_score_range_comparison.png")
+
+
+# -----------------------------------------------------------------------------
+# figure 18 - pipeline diagram
+# -----------------------------------------------------------------------------
+def fig_18_pipeline_diagram() -> None:
+    steps = [
+        ("1", "Raw\nEvaluations", "One row per\nstudent response"),
+        ("2", "Cleaning\n& Scoring", "Normalize, encode,\nscore sentiment"),
+        ("3", "Agency\nProfiles", "Aggregate to\nagency level"),
+        ("4", "Flags\n& Trends", "Concern and\nmisalignment logic"),
+        ("5", "Figures\n& Dashboard", "Report and\nleadership view"),
+    ]
+
+    n_steps = len(steps)
+    xs = [i / (n_steps - 1) for i in range(n_steps)]
+    line_y = 0.78
+
+    fig, ax = plt.subplots(figsize=(11.0, 3.8))
+    fig.patch.set_facecolor(WHITE)
+    ax.set_facecolor(WHITE)
+    ax.set_xlim(-0.08, 1.08)
+    ax.set_ylim(-0.05, 1.10)
+    ax.axis("off")
+
+    ax.plot(
+        [xs[0], xs[-1]],
+        [line_y, line_y],
+        color=GRAY_SPINE,
+        linewidth=1.5,
+        zorder=1,
+        solid_capstyle="round",
     )
 
-    plt.tight_layout()
-    save_figure(fig, "fig_15_agency_trend_spotlight.png")
+    for i, (num, step_title, desc) in enumerate(steps):
+        x = xs[i]
+
+        ax.scatter(
+            x,
+            line_y,
+            s=1400,
+            color=TEAL,
+            edgecolors=WHITE,
+            linewidths=2.0,
+            zorder=3,
+        )
+        ax.text(
+            x,
+            line_y,
+            num,
+            ha="center",
+            va="center",
+            fontsize=10,
+            fontweight="bold",
+            color=WHITE,
+            zorder=4,
+        )
+        ax.text(
+            x,
+            line_y - 0.112,
+            step_title,
+            ha="center",
+            va="top",
+            fontsize=9.5,
+            fontweight="bold",
+            color=TEAL,
+            linespacing=1.3,
+            zorder=2,
+        )
+        ax.text(
+            x,
+            line_y - 0.362,
+            desc,
+            ha="center",
+            va="top",
+            fontsize=8,
+            color=GRAY_TEXT,
+            linespacing=1.40,
+            zorder=2,
+        )
+
+    ax.text(
+        -0.06,
+        1.07,
+        "End-to-end workflow: from raw evaluations to leadership review",
+        ha="left",
+        va="top",
+        fontsize=11.5,
+        fontweight="bold",
+        color=TITLE,
+    )
+
+    _save(fig, "fig_18_pipeline_diagram.png")
 
 
-# ------------------------------------------------------------------------------
-# Entry point
-# ------------------------------------------------------------------------------
-
-
+# -----------------------------------------------------------------------------
+# main
+# -----------------------------------------------------------------------------
 def generate_all_figures() -> None:
-    """Build every static figure used by the capstone materials.
+    """Load pipeline outputs and build every report figure."""
+    profiles_df = pd.read_csv(agency_profiles_file)
+    trends_df = pd.read_csv(agency_trends_file)
+    raw_df = pd.read_csv(input_file)
+    row_df = pd.read_csv(evaluations_text_file)
 
-    Reads from the pipeline outputs. Run after pipeline.py finishes.
-    """
-    print("building report figures")
+    for col in [
+        "overall_sentiment_score",
+        "response_count",
+        "concern_indicator_count",
+        "mean_competency_score",
+        "placement_quality_score",
+        "recommendation_rate",
+    ]:
+        profiles_df[col] = pd.to_numeric(profiles_df[col], errors="coerce")
 
-    profiles_df = pd.read_csv(profiles_file)
-    sufficient_df = profiles_df[profiles_df["data_quality"] == "sufficient"].copy()
-    row_df = pd.read_csv(input_file)
-    trends_df = pd.read_csv(trends_file) if trends_file.exists() else None
+    profiles_df["concern_flag"] = profiles_df["concern_flag"].fillna("no flag")
+    profiles_df["data_quality"] = profiles_df["data_quality"].fillna(
+        "sufficient"
+    )
+    profiles_df["fit_trend"] = profiles_df["fit_trend"].fillna("stable")
+    profiles_df["misalignment_flag"] = profiles_df["misalignment_flag"].fillna(
+        "no flag"
+    )
 
-    fig_01_concern_flag_summary(sufficient_df)
-    print("  fig 01 done - concern flag summary")
+    suf = profiles_df[profiles_df["data_quality"] == "sufficient"].copy()
 
-    fig_02_fit_vs_recommendation(sufficient_df)
-    print("  fig 02 done - fit vs recommendation scatter")
-
-    fig_03_sentiment_distribution(sufficient_df)
-    print("  fig 03 done - sentiment distribution")
-
-    fig_04_likert_mean_scores(sufficient_df)
-    print("  fig 04 done - likert mean scores (sorted)")
-
-    fig_05_theme_frequency(sufficient_df)
-    print("  fig 05 done - theme frequency (sorted by gap)")
-
+    fig_01_concern_flag_summary(suf)
+    fig_02_fit_vs_recommendation(suf)
+    fig_03_sentiment_distribution(suf)
+    fig_04_likert_mean_scores(suf)
+    fig_05_theme_frequency(suf)
     fig_06_bigrams_comparison(profiles_df)
-    print("  fig 06 done - bigrams comparison")
-
     fig_07_wordcloud_most_helpful(row_df)
-    print("  fig 07 done - word cloud most helpful")
-
     fig_08_wordcloud_least_helpful(row_df)
-    print("  fig 08 done - word cloud least helpful")
+    fig_09_top_flagged_agencies(suf)
+    fig_10_yearly_fit_trend(trends_df)
+    fig_11_yearly_evaluation_volume(trends_df)
+    fig_12_fit_score_distribution(suf)
+    fig_13_recommendation_rate_distribution(suf)
+    fig_14_sentiment_by_trend(suf)
+    fig_15_agency_trend_spotlight(trends_df, profiles_df)
+    fig_16a_bsw_msw_dumbbell(raw_df)
+    fig_16b_bsw_msw_recommendation(raw_df)
+    fig_17_competency_alignment(suf)
+    fig_17b_score_range_comparison(suf)
+    fig_18_pipeline_diagram()
 
-    fig_09_top_flagged_agencies(sufficient_df)
-    print("  fig 09 done - top flagged agencies")
-
-    if trends_df is not None and not trends_df.empty:
-        trends_df = trends_df.sort_values("academic_year_start")
-
-        fig_10_yearly_fit_trend(trends_df)
-        print("  fig 10 done - yearly fit trend (line only)")
-
-        fig_11_yearly_evaluation_volume(trends_df)
-        print("  fig 11 done - yearly evaluation volume (bar only)")
-
-        fig_15_agency_trend_spotlight(trends_df, profiles_df)
-        print("  fig 15 done - agency trend spotlight (gray-out)")
-    else:
-        print("  figs 10, 11, 15 skipped - trends file not found")
-
-    fig_12_fit_score_distribution(sufficient_df)
-    print("  fig 12 done - fit score distribution (eda)")
-
-    fig_13_recommendation_rate_distribution(sufficient_df)
-    print("  fig 13 done - recommendation rate distribution (eda)")
-
-    fig_14_sentiment_score_distribution(sufficient_df)
-    print("  fig 14 done - sentiment score distribution (eda)")
-
-    print(f"done - {len(list(figures_dir.glob('*.png')))} figures saved to {figures_dir}")
+    saved_count = len(list(figures_dir.glob("*.png")))
+    print(f"saved {saved_count} figures to {figures_dir}")
 
 
 if __name__ == "__main__":
