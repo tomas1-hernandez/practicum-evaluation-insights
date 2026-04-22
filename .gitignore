@@ -36,5 +36,3 @@ Thumbs.db
 # Local dev container files
 .devcontainer/
 
-# Private or local-only raw data folders
-data/
