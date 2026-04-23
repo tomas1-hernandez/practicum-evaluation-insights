@@ -2010,9 +2010,6 @@ def generate_all_figures() -> None:
     fig_17b_score_range_comparison(suf)
     fig_18_pipeline_diagram()
 
-    saved_count = len(list(figures_dir.glob("*.png")))
-    print(f"saved {saved_count} figures to {figures_dir}")
-
 
 if __name__ == "__main__":
     generate_all_figures()
