@@ -8,7 +8,7 @@ Social work programs must evaluate the effectiveness of their field settings und
 
 - [Streamlit dashboard](https://umssw-placement-quality-dashboard.streamlit.app)
 - [Google Colab Walkthrough](https://colab.research.google.com/drive/1llw5HmqDmM9jRuJpVPn5R9kdvfHo3xU-?usp=sharing)
-- [Digital Portfolio](https://ssw-peit.netlify.app/))
+- [Digital Portfolio](https://ssw-peit.netlify.app/)
 - [Written report](https://umconnectumt-my.sharepoint.com/:w:/g/personal/tomas_hernandez_umt_edu/IQDI2uH3Lo99SLwfoRKfm5CUAUJ1QJJqtv6eDaGAewhi9Yw?e=4Gi9SH)
 
 ## What the data shows
