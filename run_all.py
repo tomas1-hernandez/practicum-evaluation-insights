@@ -1,4 +1,4 @@
-"""Run the full practicum evaluation intelligence workflow in order.
+"""Run the full practicum evaluation insights workflow in order.
 
 Runs:
     1. pipeline.py
