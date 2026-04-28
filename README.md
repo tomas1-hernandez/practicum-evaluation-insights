@@ -49,10 +49,11 @@ This workflow addresses the problem.
 ## Project Links
 
 | Resource | Link |
-|||
-| Live Placement Quality Dashboard | [ssw-placement-quality-dashboard.streamlit.app](https://ssw-placement-quality-dashboard.streamlit.app/) |
-| Google Colab Walkthrough | [Open in Colab](https://colab.research.google.com/drive/1llw5HmqDmM9jRuJpVPn5R9kdvfHo3xU-?usp=sharing) |
-| Digital Portfolio | [ssw-practicum-insights.netlify.app](https://ssw-practicum-insights.netlify.app/) |
+|---|---|
+| Streamlit dashboard | https://umssw-placement-quality-dashboard.streamlit.app |
+| Google Colab walkthrough | https://colab.research.google.com/drive/1llw5HmqDmM9jRuJpVPn5R9kdvfHo3xU-?usp=sharing |
+| Digital portfolio | https://ssw-peit.netlify.app |
+
 
 
 
@@ -163,11 +164,11 @@ For a new user or a future handoff, the best order is:
 `run_all.py` runs these scripts in order:
 
 | Step | Script | What it does |
-||||
-| 1 | `pipeline.py` | Cleans, scores, tags, and aggregates evaluations into agency profiles and trends |
-| 2 | `create_visualizations.py` | Generates static report figures as PNG files |
-| 3 | `analyze_program_alignment.py` | Conducts BSW vs MSW comparisons and competency analysis |
-| 4 | `build_descriptive_tables.py` | Creates EDA summary tables for reports |
+|---|---|---|
+| 1 | `pipeline.py` | Cleans, scores, tags, flags, and aggregates all evaluations into agency profiles and yearly trends |
+| 2 | `create_visualizations.py` | Generates all static report figures as PNG files |
+| 3 | `analyze_program_alignment.py` | Runs BSW vs MSW comparison and competency alignment analysis |
+| 4 | `build_descriptive_tables.py` | Builds EDA summary tables for the report |
 
 Run components individually as needed or execute the full workflow with `python run_all.py`.
 
@@ -217,7 +218,7 @@ The primary evaluation file should contain one row per student response.
 Required columns at minimum:
 
 | Column | Type | Description |
-||||
+|---|---|---|
 | `agency_name` | string | Practicum agency name |
 | `academic_year` | string | Academic year label, for example `2024-2025` |
 | `program_year` | string | Student level, such as `bsw`, `generalist`, or `specialization` |
@@ -229,7 +230,7 @@ Required columns at minimum:
 | `supervision_frequency` | string | Likert item |
 | `supervision_quality` | string | Likert item |
 | `felt_prepared` | string | Likert item |
-| `comp_1` through `comp_9` | string | Nine competency items |
+| `comp_1` ... `comp_9` | string | Nine competency items |
 
 Additional open-ended fields, when available, are also used:
 
@@ -252,10 +253,10 @@ If your column names differ, update the mappings in `constants.py` before runnin
 The competency scores file should contain one row per academic year and program-level combination.
 
 | Column | Type | Description |
-||||
+|---|---|---|
 | `program_level` | string | `BSW` or `MSW` |
 | `academic_year` | string | Academic year label matching the evaluation file |
-| `competency_1` through `competency_9` | float | Program-level benchmark scores from 0 to 100 |
+| `competency_1` ... `competency_9` | float | Program-level benchmark scores from 0 to 100 |
 
 
 
@@ -268,7 +269,7 @@ All outputs are written to the `outputs/` folder.
 One row per agency. This is the main output used by the dashboard and for field education leadership review.
 
 | Column | Description |
-|||
+|---|---|
 | `agency_name_display` | Standardized agency name |
 | `placement_quality_score` | Mean of six Likert items, scored 1 to 5 |
 | `recommendation_rate` | Share of students who would recommend the agency |
@@ -309,8 +310,8 @@ An agency is flagged for leadership review only when **two or more concern signa
 ### The five concern signals
 
 | Signal | Threshold | Rationale |
-||||
-| Placement Quality Score | Below 3.5 | Marks the lower portion of the distribution where scores begin to meaningfully separate from the bulk of agencies |
+|---|---|---|
+| Placement quality score | Below 3.5 | Marks the lower portion of the distribution where scores begin to meaningfully separate from the bulk of agencies |
 | Recommendation rate | Below 70% | Indicates a meaningful share of students would not recommend the site to a future student |
 | Sentiment score | Below 0.05 | Captures language trending toward neutral or negative in professional evaluation writing |
 | Administrative overload | Above 40% of least-helpful responses | Students describe the placement as paperwork-heavy or disconnected from meaningful practice |
@@ -418,7 +419,7 @@ pip install -r requirements.txt
 Main packages include:
 
 | Package | Purpose |
-|||
+|---|---|
 | `pandas` | Data loading, cleaning, and aggregation |
 | `numpy` | Numerical operations |
 | `matplotlib` | Static report figures |
