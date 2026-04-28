@@ -1,4 +1,4 @@
-"""Main pipeline for practicum evaluation intelligence.
+"""Main pipeline for practicum evaluation insights.
 
 Run this from the project root:
     python pipeline.py
@@ -605,7 +605,7 @@ def build_agency_yearly_trends(evaluations_df: pd.DataFrame) -> pd.DataFrame:
 # -----------------------------------------------------------------------------
 def run_pipeline() -> None:
     """Run the full pipeline from raw input to final outputs."""
-    print("running practicum evaluation intelligence pipeline")
+    print("running practicum evaluation insights pipeline")
 
     evaluations_df = pd.read_csv(input_file)
     validate_input_columns(evaluations_df)
